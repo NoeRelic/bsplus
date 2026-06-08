@@ -59,6 +59,7 @@ export interface Movie {
   imdbRating?: number;
   director?: string;
   cast?: CastMember[];
+  isM3U?: boolean;
 }
 
 export interface Series {
@@ -71,6 +72,7 @@ export interface Series {
   imdbRating?: number;
   director?: string;
   cast?: CastMember[];
+  isM3U?: boolean;
 }
 
 export interface Episode {
@@ -83,6 +85,8 @@ export interface Episode {
   videoUrlEN?: string;
   subtitleTR?: string;
   subtitleEN?: string;
+  story?: string;
+  bannerUrl?: string;
 }
 
 export interface Channel {
@@ -121,4 +125,6 @@ export interface Database {
     seriesIds: string[];
   };
   notifications?: Notification[];
+  maintenance?: boolean;
+  comments?: any[];
 }

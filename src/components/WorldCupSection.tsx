@@ -193,7 +193,7 @@ export default function WorldCupSection() {
   const [turkeyMatches, setTurkeyMatches] = useState<Match[]>(TURKEY_SCHEDULE as Match[]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<'turkey' | 'today'>('turkey');
-  const pollingRef = useRef<NodeJS.Timeout>();
+  const pollingRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
   const fetchData = async () => {
     try {

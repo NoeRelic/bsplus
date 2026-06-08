@@ -31,7 +31,7 @@ export default async function HomePage() {
         const sortedProgress = [...profile.progress].sort((a, b) => new Date(b.lastWatched).getTime() - new Date(a.lastWatched).getTime());
         
         continueWatching = sortedProgress.map(p => {
-          let media;
+          let media: any;
           let title = '';
           let bannerUrl = '';
           let link = '';

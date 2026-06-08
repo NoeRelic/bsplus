@@ -127,7 +127,7 @@ export default function PlayerClient({ videoUrl, videoUrlEN, subtitleTR, subtitl
 
   const actualVideoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const controlsTimeoutRef = useRef<NodeJS.Timeout>();
+  const controlsTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const hlsRef = useRef<Hls | null>(null);
 
   useEffect(() => {
@@ -180,8 +180,10 @@ export default function PlayerClient({ videoUrl, videoUrlEN, subtitleTR, subtitl
       const time = actualVideoRef.current.currentTime;
       hlsRef.current.loadSource(newSource);
       hlsRef.current.once(Hls.Events.MANIFEST_PARSED, () => {
-        actualVideoRef.current.currentTime = time;
-        actualVideoRef.current.play().catch(e => console.log('Auto-play blocked:', e));
+        if (actualVideoRef.current) {
+          actualVideoRef.current.currentTime = time;
+          actualVideoRef.current.play().catch(e => console.log('Auto-play blocked:', e));
+        }
       });
     } else if (actualVideoRef.current) {
       const time = actualVideoRef.current.currentTime;
