@@ -110,6 +110,7 @@ export default function PlayerClient({ videoUrl, videoUrlEN, subtitleTR, subtitl
   const [hlsAudioTracks, setHlsAudioTracks] = useState<any[]>([]);
   const [currentHlsAudioIndex, setCurrentHlsAudioIndex] = useState<number>(-1);
   const [activeSubtitle, setActiveSubtitle] = useState<'off' | 'tr' | 'en'>(initialPrefs.subtitle || 'off');
+  const [activeDoubleSub, setActiveDoubleSub] = useState<boolean>(initialPrefs.doubleSubtitle === 'true');
   const [subColor, setSubColor] = useState(initialPrefs.subColor || 'white');
   const [subSize, setSubSize] = useState(initialPrefs.subSize || '1.5rem');
   
@@ -416,7 +417,17 @@ export default function PlayerClient({ videoUrl, videoUrlEN, subtitleTR, subtitl
     setProgress((v.currentTime / v.duration) * 100);
 
     // Sync Custom Subtitles
-    if (activeSubtitle !== 'off') {
+    if (activeDoubleSub && (subtitleTR || cuesTR.length > 0) && (subtitleEN || cuesEN.length > 0)) {
+      const cueTR = cuesTR.find(c => v.currentTime >= c.start && v.currentTime <= c.end);
+      const cueEN = cuesEN.find(c => v.currentTime >= c.start && v.currentTime <= c.end);
+      let text = '';
+      if (cueTR) text += cueTR.text;
+      if (cueEN) {
+        if (text) text += '\n';
+        text += cueEN.text;
+      }
+      setCurrentSubtitleText(text);
+    } else if (activeSubtitle !== 'off') {
       const activeCues = activeSubtitle === 'tr' ? cuesTR : cuesEN;
       const currentCue = activeCues.find(c => v.currentTime >= c.start && v.currentTime <= c.end);
       setCurrentSubtitleText(currentCue ? currentCue.text : '');
@@ -634,18 +645,17 @@ export default function PlayerClient({ videoUrl, videoUrlEN, subtitleTR, subtitl
           {/* Custom Subtitle Overlay */}
           {currentSubtitleText && !introPlaying && (
             <div 
-              className="absolute left-0 w-full text-center pointer-events-none flex justify-center transition-all duration-300"
+              className="absolute left-0 w-full text-center pointer-events-none flex flex-col items-center gap-1 transition-all duration-300"
               style={{ bottom: showControls ? '130px' : '60px' }}
             >
               <div 
-                className="px-6 py-2 rounded-md max-w-[80%]"
+                className="px-6 py-2 rounded-lg text-glow transition-all duration-300 max-w-[80%] whitespace-pre-wrap"
                 style={{
                   color: subColor,
                   fontSize: subSize,
                   backgroundColor: 'rgba(0, 0, 0, 0.75)',
                   textShadow: '2px 2px 4px rgba(0,0,0,0.9)',
                   fontWeight: '600',
-                  whiteSpace: 'pre-wrap',
                   lineHeight: '1.4'
                 }}
               >
@@ -844,28 +854,41 @@ export default function PlayerClient({ videoUrl, videoUrlEN, subtitleTR, subtitl
                       <h3 className="text-zinc-400 text-sm font-bold mb-4 uppercase tracking-wider border-b border-zinc-700 pb-2">Altyazı</h3>
                       <div className="flex flex-col gap-3">
                         <button 
-                          onClick={() => { setActiveSubtitle('off'); savePreference('subtitle', 'off'); }}
-                          className={`flex items-center gap-2 text-left hover:text-white transition-colors ${activeSubtitle === 'off' ? 'text-white font-bold' : 'text-zinc-400'}`}
+                          onClick={() => { setActiveSubtitle('off'); setActiveDoubleSub(false); savePreference('subtitle', 'off'); savePreference('doubleSubtitle', 'false'); }}
+                          className={`flex items-center gap-2 text-left hover:text-white transition-colors ${activeSubtitle === 'off' && !activeDoubleSub ? 'text-white font-bold' : 'text-zinc-400'}`}
                         >
-                          <Check className={`w-4 h-4 ${activeSubtitle === 'off' ? 'opacity-100' : 'opacity-0'}`} />
+                          <Check className={`w-4 h-4 ${activeSubtitle === 'off' && !activeDoubleSub ? 'opacity-100' : 'opacity-0'}`} />
                           Kapalı
                         </button>
                         {subtitleTR && (
                           <button 
-                            onClick={() => { setActiveSubtitle('tr'); savePreference('subtitle', 'tr'); }}
-                            className={`flex items-center gap-2 text-left hover:text-white transition-colors ${activeSubtitle === 'tr' ? 'text-white font-bold' : 'text-zinc-400'}`}
+                            onClick={() => { setActiveSubtitle('tr'); setActiveDoubleSub(false); savePreference('subtitle', 'tr'); savePreference('doubleSubtitle', 'false'); }}
+                            className={`flex items-center gap-2 text-left hover:text-white transition-colors ${activeSubtitle === 'tr' && !activeDoubleSub ? 'text-white font-bold' : 'text-zinc-400'}`}
                           >
-                            <Check className={`w-4 h-4 ${activeSubtitle === 'tr' ? 'opacity-100' : 'opacity-0'}`} />
+                            <Check className={`w-4 h-4 ${activeSubtitle === 'tr' && !activeDoubleSub ? 'opacity-100' : 'opacity-0'}`} />
                             Türkçe
                           </button>
                         )}
                         {subtitleEN && (
                           <button 
-                            onClick={() => { setActiveSubtitle('en'); savePreference('subtitle', 'en'); }}
-                            className={`flex items-center gap-2 text-left hover:text-white transition-colors ${activeSubtitle === 'en' ? 'text-white font-bold' : 'text-zinc-400'}`}
+                            onClick={() => { setActiveSubtitle('en'); setActiveDoubleSub(false); savePreference('subtitle', 'en'); savePreference('doubleSubtitle', 'false'); }}
+                            className={`flex items-center gap-2 text-left hover:text-white transition-colors ${activeSubtitle === 'en' && !activeDoubleSub ? 'text-white font-bold' : 'text-zinc-400'}`}
                           >
-                            <Check className={`w-4 h-4 ${activeSubtitle === 'en' ? 'opacity-100' : 'opacity-0'}`} />
+                            <Check className={`w-4 h-4 ${activeSubtitle === 'en' && !activeDoubleSub ? 'opacity-100' : 'opacity-0'}`} />
                             İngilizce
+                          </button>
+                        )}
+                        {subtitleTR && subtitleEN && (
+                          <button 
+                            onClick={() => {
+                              const nextState = !activeDoubleSub;
+                              setActiveDoubleSub(nextState);
+                              savePreference('doubleSubtitle', String(nextState));
+                            }}
+                            className={`flex items-center gap-2 text-left hover:text-white transition-colors ${activeDoubleSub ? 'text-white font-bold' : 'text-zinc-400'}`}
+                          >
+                            <Check className={`w-4 h-4 ${activeDoubleSub ? 'opacity-100' : 'opacity-0'}`} />
+                            🔀 Çift Altyazı (TR + EN)
                           </button>
                         )}
                       </div>

@@ -7,6 +7,9 @@ const isServerless = process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME 
 const originalDbPath = path.join(process.cwd(), 'database.json');
 const dbPath = isServerless ? '/tmp/database.json' : originalDbPath;
 
+const DB_API_URL = process.env.DB_API_URL || 'http://154.193.185.143:3005/api/db';
+const DB_API_KEY = process.env.DB_API_KEY || 'bsplus_secure_vds_db_key_2026';
+
 // Global in-memory lock to prevent concurrent read/writes
 let dbLock = Promise.resolve();
 
@@ -21,6 +24,25 @@ function acquireLock(): Promise<() => void> {
 }
 
 export async function readDB(retries = 5): Promise<Database> {
+  // If remote API server configuration is provided, read from remote
+  if (DB_API_URL) {
+    for (let i = 0; i < retries; i++) {
+      try {
+        const res = await fetch(DB_API_URL, {
+          headers: { 'x-api-key': DB_API_KEY },
+          next: { revalidate: 0 } // Bypass Next.js cache
+        });
+        if (res.ok) {
+          return await res.json() as Database;
+        }
+      } catch (error) {
+        console.error('Remote DB read attempt failed:', error);
+      }
+      await new Promise(r => setTimeout(r, 100 * (i + 1)));
+    }
+    console.warn('Falling back to local database read due to remote failure.');
+  }
+
   const unlock = await acquireLock();
   try {
     // Ensure file exists in writable path (e.g. /tmp) on serverless runtimes
@@ -61,6 +83,32 @@ export async function readDB(retries = 5): Promise<Database> {
 }
 
 export async function writeDB(data: Database): Promise<void> {
+  // If remote API server configuration is provided, write to remote
+  if (DB_API_URL) {
+    let success = false;
+    for (let i = 0; i < 5; i++) {
+      try {
+        const res = await fetch(DB_API_URL, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'x-api-key': DB_API_KEY 
+          },
+          body: JSON.stringify(data)
+        });
+        if (res.ok) {
+          success = true;
+          break;
+        }
+      } catch (error) {
+        console.error('Remote DB write attempt failed:', error);
+      }
+      await new Promise(r => setTimeout(r, 100 * (i + 1)));
+    }
+    if (success) return;
+    console.warn('Falling back to local database write due to remote failure.');
+  }
+
   const unlock = await acquireLock();
   try {
     const tempPath = `${dbPath}.${crypto.randomUUID()}.tmp`;
