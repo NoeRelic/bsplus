@@ -56,10 +56,24 @@ export default function AdminPanel() {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [editMovie, setEditMovie] = useState<any>(null);
   const [editSeries, setEditSeries] = useState<any>(null);
+  const [seriesSearch, setSeriesSearch] = useState('');
+  const [selectedSeries, setSelectedSeries] = useState<any>(null);
+  const [showSeriesResults, setShowSeriesResults] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
     fetchData();
+  }, []);
+
+  useEffect(() => {
+    const handleOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.relative')) {
+        setShowSeriesResults(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
   }, []);
 
   const fetchData = async () => {
@@ -590,16 +604,64 @@ export default function AdminPanel() {
                     const data = await res.json();
                     if (data.success) subtitleTR = data.url;
                   }
+                  if (!selectedSeries) {
+                    alert('Lütfen listeden bir dizi arayıp seçin.');
+                    return;
+                  }
                   handleAction('addEpisode', {
-                    seriesId: fd.get('seriesId'), seasonNumber: fd.get('seasonNumber'), episodeNumber: fd.get('episodeNumber'),
+                    seriesId: selectedSeries.id, seasonNumber: fd.get('seasonNumber'), episodeNumber: fd.get('episodeNumber'),
                     title: fd.get('title'), videoUrl: fd.get('videoUrl'), subtitleTR
                   });
                   form.reset();
+                  setSelectedSeries(null);
+                  setSeriesSearch('');
                 }}>
-                  <select name="seriesId" required className="bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] text-white px-4 py-3 rounded-lg outline-none focus:border-[#9155fd] w-full md:col-span-2">
-                    <option value="" className="bg-[#312d4b]">Dizi Seçin</option>
-                    {data.series?.map((s: any) => <option key={s.id} value={s.id} className="bg-[#312d4b]">{s.title}</option>)}
-                  </select>
+                  <div className="md:col-span-2 relative">
+                    <label className="text-xs text-[rgba(255,255,255,0.6)] mb-2 block uppercase tracking-wider">Dizi Ara & Seç (3.000+ Dizi)</label>
+                    <input 
+                      type="text"
+                      placeholder="Dizi adını yazarak arayın..."
+                      value={seriesSearch}
+                      onChange={(e) => {
+                        setSeriesSearch(e.target.value);
+                        setShowSeriesResults(true);
+                      }}
+                      onFocus={() => setShowSeriesResults(true)}
+                      className="bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] text-white px-4 py-3 rounded-lg outline-none focus:border-[#9155fd] w-full"
+                    />
+                    
+                    {/* Autocomplete Results */}
+                    {showSeriesResults && seriesSearch.trim().length > 0 && (
+                      <div className="absolute left-0 right-0 mt-1 max-h-60 overflow-y-auto bg-[#312d4b] border border-[rgba(255,255,255,0.12)] rounded-lg shadow-2xl z-50">
+                        {data.series
+                          ?.filter((s: any) => s.title.toLowerCase().includes(seriesSearch.toLowerCase()))
+                          .map((s: any) => (
+                            <button
+                              key={s.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedSeries(s);
+                                setSeriesSearch(s.title);
+                                setShowSeriesResults(false);
+                              }}
+                              className="w-full text-left px-4 py-3 hover:bg-[#9155fd] hover:text-white transition-colors border-b border-[rgba(255,255,255,0.06)]"
+                            >
+                              {s.title}
+                            </button>
+                          ))
+                        }
+                        {data.series?.filter((s: any) => s.title.toLowerCase().includes(seriesSearch.toLowerCase())).length === 0 && (
+                          <div className="p-3 text-zinc-400 text-sm">Dizi bulunamadı.</div>
+                        )}
+                      </div>
+                    )}
+                    
+                    {selectedSeries && (
+                      <div className="text-xs text-[#56ca00] mt-1 flex items-center gap-1 font-bold">
+                        ✓ Seçilen Dizi: {selectedSeries.title}
+                      </div>
+                    )}
+                  </div>
                   <input name="seasonNumber" type="number" placeholder="Sezon No" required className="bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] text-white px-4 py-3 rounded-lg outline-none focus:border-[#9155fd] w-full" />
                   <input name="episodeNumber" type="number" placeholder="Bölüm No" required className="bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] text-white px-4 py-3 rounded-lg outline-none focus:border-[#9155fd] w-full" />
                   <input name="title" placeholder="Bölüm Adı" required className="bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] text-white px-4 py-3 rounded-lg outline-none focus:border-[#9155fd] w-full md:col-span-2" />
