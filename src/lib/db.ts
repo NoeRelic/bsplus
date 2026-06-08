@@ -3,7 +3,9 @@ import path from 'path';
 import { Database } from './types';
 import crypto from 'crypto';
 
-const dbPath = path.join(process.cwd(), 'database.json');
+const isServerless = process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NODE_ENV === 'production';
+const originalDbPath = path.join(process.cwd(), 'database.json');
+const dbPath = isServerless ? '/tmp/database.json' : originalDbPath;
 
 // Global in-memory lock to prevent concurrent read/writes
 let dbLock = Promise.resolve();
@@ -21,13 +23,32 @@ function acquireLock(): Promise<() => void> {
 export async function readDB(retries = 5): Promise<Database> {
   const unlock = await acquireLock();
   try {
+    // Ensure file exists in writable path (e.g. /tmp) on serverless runtimes
+    if (dbPath !== originalDbPath) {
+      try {
+        await fs.access(dbPath);
+      } catch {
+        try {
+          await fs.copyFile(originalDbPath, dbPath);
+        } catch (copyErr) {
+          console.error('Failed to copy database to writable path:', copyErr);
+        }
+      }
+    }
+
     for (let i = 0; i < retries; i++) {
       try {
         const data = await fs.readFile(dbPath, 'utf8');
         return JSON.parse(data) as Database;
       } catch (error: any) {
         if (error.code === 'ENOENT') {
-          return { series: [], dailyGoldSeries: undefined } as unknown as Database;
+          // Try original path first before returning empty
+          try {
+            const originalData = await fs.readFile(originalDbPath, 'utf8');
+            return JSON.parse(originalData) as Database;
+          } catch {
+            return { series: [], dailyGoldSeries: undefined } as unknown as Database;
+          }
         }
         if (i === retries - 1) throw error;
         await new Promise(r => setTimeout(r, 100 * (i + 1))); // Exponential backoff
