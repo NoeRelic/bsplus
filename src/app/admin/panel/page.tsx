@@ -59,6 +59,7 @@ export default function AdminPanel() {
   const [seriesSearch, setSeriesSearch] = useState('');
   const [selectedSeries, setSelectedSeries] = useState<any>(null);
   const [showSeriesResults, setShowSeriesResults] = useState(false);
+  const [episodeSearchQuery, setEpisodeSearchQuery] = useState('');
   const router = useRouter();
 
   useEffect(() => {
@@ -695,18 +696,51 @@ export default function AdminPanel() {
                 </form>
               </div>
               <div className="bg-[#312d4b] rounded-xl shadow-[0_4px_8px_rgba(0,0,0,0.2)] p-6">
-                <h3 className="text-lg font-bold mb-4">Son Eklenen Bölümler</h3>
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                  <h3 className="text-lg font-bold">Bölüm Listesi</h3>
+                  <input
+                    type="text"
+                    placeholder="Bölüm veya Dizi adı ile ara..."
+                    value={episodeSearchQuery}
+                    onChange={(e) => setEpisodeSearchQuery(e.target.value)}
+                    className="bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] text-white px-4 py-2 rounded-lg outline-none focus:border-[#9155fd] text-sm max-w-xs w-full"
+                  />
+                </div>
+                
                 <ul className="divide-y divide-[rgba(255,255,255,0.06)]">
-                  {data.episodes?.slice().reverse().map((ep: any) => {
-                    const series = data.series?.find((s:any) => s.id === ep.seriesId);
-                    return (
-                      <li key={ep.id} className="py-4 flex justify-between items-center hover:bg-[rgba(255,255,255,0.02)] transition-colors px-2 rounded-lg">
-                        <span className="font-medium text-white">{series?.title} <span className="text-[#9155fd]">S{ep.seasonNumber}E{ep.episodeNumber}</span>: <span className="text-[rgba(255,255,255,0.6)]">{ep.title}</span></span>
-                        <button onClick={() => { if(confirm('Silinsin mi?')) handleAction('deleteEpisode', { id: ep.id }) }} className="text-[rgba(255,255,255,0.6)] hover:text-[#ff4c51]"><Trash className="w-5 h-5"/></button>
-                      </li>
-                    )
-                  })}
+                  {(() => {
+                    const filtered = (data.episodes || []).filter((ep: any) => {
+                      const series = data.series?.find((s: any) => s.id === ep.seriesId);
+                      const sTitle = series?.title?.toLowerCase() || '';
+                      const epTitle = ep.title?.toLowerCase() || '';
+                      const query = episodeSearchQuery.toLowerCase();
+                      return sTitle.includes(query) || epTitle.includes(query);
+                    });
+
+                    const displayList = filtered.slice().reverse().slice(0, 30);
+
+                    if (displayList.length === 0) {
+                      return <div className="p-4 text-zinc-500 text-sm">Eşleşen bölüm bulunamadı.</div>;
+                    }
+
+                    return displayList.map((ep: any) => {
+                      const series = data.series?.find((s: any) => s.id === ep.seriesId);
+                      return (
+                        <li key={ep.id} className="py-4 flex justify-between items-center hover:bg-[rgba(255,255,255,0.02)] transition-colors px-2 rounded-lg">
+                          <span className="font-medium text-white">
+                            {series?.title || 'Bilinmeyen Dizi'} <span className="text-[#9155fd]">S{ep.seasonNumber}E{ep.episodeNumber}</span>: <span className="text-[rgba(255,255,255,0.6)]">{ep.title}</span>
+                          </span>
+                          <button onClick={() => { if (confirm('Silinsin mi?')) handleAction('deleteEpisode', { id: ep.id }) }} className="text-[rgba(255,255,255,0.6)] hover:text-[#ff4c51] p-1">
+                            <Trash className="w-5 h-5"/>
+                          </button>
+                        </li>
+                      );
+                    });
+                  })()}
                 </ul>
+                {(data.episodes || []).length > 30 && !episodeSearchQuery && (
+                  <p className="text-xs text-zinc-500 mt-4 text-center">Performans için sadece son eklenen 30 bölüm listelenmiştir. Diğer bölümler için yukarıdaki arama kutusunu kullanabilirsiniz.</p>
+                )}
               </div>
             </div>
           )}
