@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
-import { readDB, writeDB } from '@/lib/db';
 import { cookies } from 'next/headers';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
+import { connectDB } from '@/lib/mongoose';
+import { User, Movie, Series, Episode, Comment, Notification, Config, SportsChannel, Coupon, TvSchedule } from '@/lib/models';
 import { PackageType } from '@/lib/types';
 
 function generateRandomString(length: number) {
@@ -18,10 +19,10 @@ export async function POST(req: Request) {
     }
 
     const { action, payload } = await req.json();
-    const db = await readDB();
+    await connectDB();
 
     if (action === 'addMovie') {
-      db.movies.push({
+      await Movie.create({
         id: crypto.randomUUID(),
         ...payload,
         year: payload.year ? Number(payload.year) : undefined,
@@ -29,35 +30,28 @@ export async function POST(req: Request) {
         cast: payload.cast ? (typeof payload.cast === 'string' ? JSON.parse(payload.cast) : payload.cast) : undefined,
         categories: payload.categories ? (typeof payload.categories === 'string' ? JSON.parse(payload.categories) : payload.categories) : undefined,
       });
-      await writeDB(db);
       return NextResponse.json({ success: true });
     }
 
     if (action === 'editMovie') {
-      const idx = db.movies.findIndex(m => m.id === payload.id);
-      if (idx > -1) {
-        db.movies[idx] = { 
-          ...db.movies[idx], 
-          ...payload,
-          year: payload.year ? Number(payload.year) : undefined,
-          imdbRating: payload.imdbRating ? Number(payload.imdbRating) : undefined,
-          cast: payload.cast ? (typeof payload.cast === 'string' ? JSON.parse(payload.cast) : payload.cast) : undefined,
-          categories: payload.categories ? (typeof payload.categories === 'string' ? JSON.parse(payload.categories) : payload.categories) : undefined,
-        };
-        await writeDB(db);
-        return NextResponse.json({ success: true });
-      }
+      const updated = await Movie.findOneAndUpdate({ id: payload.id }, {
+        ...payload,
+        year: payload.year ? Number(payload.year) : undefined,
+        imdbRating: payload.imdbRating ? Number(payload.imdbRating) : undefined,
+        cast: payload.cast ? (typeof payload.cast === 'string' ? JSON.parse(payload.cast) : payload.cast) : undefined,
+        categories: payload.categories ? (typeof payload.categories === 'string' ? JSON.parse(payload.categories) : payload.categories) : undefined,
+      });
+      if (updated) return NextResponse.json({ success: true });
       return NextResponse.json({ error: 'Movie not found' }, { status: 404 });
     }
 
     if (action === 'deleteMovie') {
-      db.movies = db.movies.filter(m => m.id !== payload.id);
-      await writeDB(db);
+      await Movie.findOneAndDelete({ id: payload.id });
       return NextResponse.json({ success: true });
     }
 
     if (action === 'addSeries') {
-      db.series.push({
+      await Series.create({
         id: crypto.randomUUID(),
         ...payload,
         year: payload.year ? Number(payload.year) : undefined,
@@ -65,53 +59,45 @@ export async function POST(req: Request) {
         cast: payload.cast ? (typeof payload.cast === 'string' ? JSON.parse(payload.cast) : payload.cast) : undefined,
         categories: payload.categories ? (typeof payload.categories === 'string' ? JSON.parse(payload.categories) : payload.categories) : undefined,
       });
-      await writeDB(db);
       return NextResponse.json({ success: true });
     }
 
     if (action === 'editSeries') {
-      const idx = db.series.findIndex(s => s.id === payload.id);
-      if (idx > -1) {
-        db.series[idx] = { 
-          ...db.series[idx], 
-          ...payload,
-          year: payload.year ? Number(payload.year) : undefined,
-          imdbRating: payload.imdbRating ? Number(payload.imdbRating) : undefined,
-          cast: payload.cast ? (typeof payload.cast === 'string' ? JSON.parse(payload.cast) : payload.cast) : undefined,
-          categories: payload.categories ? (typeof payload.categories === 'string' ? JSON.parse(payload.categories) : payload.categories) : undefined,
-        };
-        await writeDB(db);
-        return NextResponse.json({ success: true });
-      }
+      const updated = await Series.findOneAndUpdate({ id: payload.id }, {
+        ...payload,
+        year: payload.year ? Number(payload.year) : undefined,
+        imdbRating: payload.imdbRating ? Number(payload.imdbRating) : undefined,
+        cast: payload.cast ? (typeof payload.cast === 'string' ? JSON.parse(payload.cast) : payload.cast) : undefined,
+        categories: payload.categories ? (typeof payload.categories === 'string' ? JSON.parse(payload.categories) : payload.categories) : undefined,
+      });
+      if (updated) return NextResponse.json({ success: true });
       return NextResponse.json({ error: 'Series not found' }, { status: 404 });
     }
 
     if (action === 'deleteSeries') {
-      db.series = db.series.filter(s => s.id !== payload.id);
-      // Optional: Delete associated episodes too
-      db.episodes = db.episodes.filter(e => e.seriesId !== payload.id);
-      await writeDB(db);
+      await Series.findOneAndDelete({ id: payload.id });
+      await Episode.deleteMany({ seriesId: payload.id });
       return NextResponse.json({ success: true });
     }
 
     if (action === 'deleteEpisode') {
-      db.episodes = db.episodes.filter(e => e.id !== payload.id);
-      await writeDB(db);
+      await Episode.findOneAndDelete({ id: payload.id });
       return NextResponse.json({ success: true });
     }
 
     if (action === 'bulkDeleteM3U') {
-      // Delete movies and series that were imported via M3U
-      db.movies = (db.movies || []).filter(m => !(m as any).isM3U);
-      const seriesToDelete = (db.series || []).filter(s => (s as any).isM3U).map(s => s.id);
-      db.series = (db.series || []).filter(s => !(s as any).isM3U);
-      db.episodes = (db.episodes || []).filter(e => !seriesToDelete.includes(e.seriesId));
-      await writeDB(db);
+      await Movie.deleteMany({ isM3U: true });
+      const seriesToDelete = await Series.find({ isM3U: true }).select('id').lean();
+      const sIds = seriesToDelete.map((s: any) => s.id);
+      await Series.deleteMany({ isM3U: true });
+      if (sIds.length > 0) {
+        await Episode.deleteMany({ seriesId: { $in: sIds } });
+      }
       return NextResponse.json({ success: true, message: 'Tüm M3U içerikleri silindi.' });
     }
 
     if (action === 'addEpisode') {
-      db.episodes.push({
+      await Episode.create({
         id: crypto.randomUUID(),
         seriesId: payload.seriesId,
         seasonNumber: parseInt(payload.seasonNumber),
@@ -122,45 +108,54 @@ export async function POST(req: Request) {
         subtitleTR: payload.subtitleTR || undefined,
         subtitleEN: payload.subtitleEN || undefined,
       });
-      await writeDB(db);
-      await writeDB(db);
       return NextResponse.json({ success: true });
     }
 
-    if (action === 'addChannel') {
-      if (!db.channels) db.channels = [];
-      db.channels.push({
+    if (action === 'updateBsPlusTv') {
+      await Config.findOneAndUpdate(
+        { key: 'mainConfig' },
+        { 
+          $set: { 
+            bsplusTv: { streamUrl: payload.streamUrl, currentProgram: payload.currentProgram } 
+          }
+        },
+        { upsert: true }
+      );
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === 'deleteBulkM3uSeries') {
+      await Series.deleteMany({ story: 'M3U ile toplu eklendi.' });
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === 'deleteBulkM3uMovies') {
+      await Movie.deleteMany({ story: 'M3U ile toplu eklendi.' });
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === 'addSportsChannel') {
+      await SportsChannel.create({
         id: crypto.randomUUID(),
         name: payload.name,
         logoUrl: payload.logoUrl,
-        streamUrl: payload.streamUrl,
+        streamUrl: payload.streamUrl
       });
-      await writeDB(db);
       return NextResponse.json({ success: true });
     }
 
-    if (action === 'deleteChannel') {
-      if (!db.channels) db.channels = [];
-      db.channels = db.channels.filter(c => c.id !== payload.id);
-      await writeDB(db);
-      return NextResponse.json({ success: true });
-    }
-
-    if (action === 'addLivePlaylist') {
-      if (!db.livePlaylists) db.livePlaylists = [];
-      db.livePlaylists.push({
-        id: crypto.randomUUID(),
-        name: payload.name || 'İsimsiz Playlist',
-        url: payload.url,
+    if (action === 'editSportsChannel') {
+      const updated = await SportsChannel.findOneAndUpdate({ id: payload.id }, {
+        name: payload.name,
+        logoUrl: payload.logoUrl,
+        streamUrl: payload.streamUrl
       });
-      await writeDB(db);
-      return NextResponse.json({ success: true });
+      if (updated) return NextResponse.json({ success: true });
+      return NextResponse.json({ error: 'Spor kanalı bulunamadı' }, { status: 404 });
     }
 
-    if (action === 'deleteLivePlaylist') {
-      if (!db.livePlaylists) db.livePlaylists = [];
-      db.livePlaylists = db.livePlaylists.filter(p => p.id !== payload.id);
-      await writeDB(db);
+    if (action === 'deleteSportsChannel') {
+      await SportsChannel.findOneAndDelete({ id: payload.id });
       return NextResponse.json({ success: true });
     }
 
@@ -169,7 +164,7 @@ export async function POST(req: Request) {
       const password = generateRandomString(10);
       const passwordHash = await bcrypt.hash(password, 10);
 
-      const newUser = {
+      const newUser = await User.create({
         id: crypto.randomUUID(),
         username,
         passwordHash,
@@ -178,36 +173,37 @@ export async function POST(req: Request) {
         isBanned: false,
         plainPassword: password,
         createdAt: new Date().toISOString()
-      };
-
-      db.users.push(newUser);
-      await writeDB(db);
+      });
 
       return NextResponse.json({ success: true, user: { username, password, package: newUser.package } });
     }
 
     if (action === 'banUser') {
-      const userIndex = db.users.findIndex(u => u.username === payload.username);
-      if (userIndex > -1) {
-        db.users[userIndex].isBanned = !db.users[userIndex].isBanned;
-        await writeDB(db);
-        return NextResponse.json({ success: true, isBanned: db.users[userIndex].isBanned });
+      const user = await User.findOne({ username: payload.username });
+      if (user) {
+        user.isBanned = !user.isBanned;
+        await user.save();
+        return NextResponse.json({ success: true, isBanned: user.isBanned });
       }
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
     if (action === 'deleteUser') {
-      const initialLength = db.users.length;
-      db.users = db.users.filter(u => u.username !== payload.username);
-      if (db.users.length !== initialLength) {
-        await writeDB(db);
-        return NextResponse.json({ success: true });
-      }
+      const result = await User.findOneAndDelete({ username: payload.username });
+      if (result) return NextResponse.json({ success: true });
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
     if (action === 'backupDatabase') {
-      return new NextResponse(JSON.stringify(db, null, 2), {
+      const users = await User.find().lean();
+      const movies = await Movie.find().lean();
+      const series = await Series.find().lean();
+      const episodes = await Episode.find().lean();
+      const config = await Config.findOne({ key: 'mainConfig' }).lean();
+      
+      const dbObj = { users, movies, series, episodes, ...config };
+      
+      return new NextResponse(JSON.stringify(dbObj, null, 2), {
         headers: {
           'Content-Type': 'application/json',
           'Content-Disposition': `attachment; filename="bsplus-backup-${new Date().toISOString().slice(0, 10)}.json"`
@@ -216,32 +212,34 @@ export async function POST(req: Request) {
     }
 
     if (action === 'toggleMaintenance') {
-      db.maintenance = !db.maintenance;
-      await writeDB(db);
-      return NextResponse.json({ success: true, maintenance: db.maintenance });
+      const conf = await Config.findOne({ key: 'mainConfig' });
+      if (conf) {
+        conf.maintenance = !conf.maintenance;
+        await conf.save();
+        return NextResponse.json({ success: true, maintenance: conf.maintenance });
+      } else {
+        await Config.create({ key: 'mainConfig', maintenance: true });
+        return NextResponse.json({ success: true, maintenance: true });
+      }
     }
 
     if (action === 'approveComment') {
-      if (!db.comments) return NextResponse.json({ error: 'No comments' }, { status: 404 });
-      const idx = db.comments.findIndex(c => c.id === payload.id);
-      if (idx > -1) {
-        db.comments[idx].status = 'approved';
-        await writeDB(db);
+      const comment = await Comment.findOne({ id: payload.id });
+      if (comment) {
+        comment.status = 'approved';
+        await comment.save();
         return NextResponse.json({ success: true });
       }
       return NextResponse.json({ error: 'Comment not found' }, { status: 404 });
     }
 
     if (action === 'deleteComment') {
-      if (!db.comments) return NextResponse.json({ error: 'No comments' }, { status: 404 });
-      db.comments = db.comments.filter(c => c.id !== payload.id);
-      await writeDB(db);
+      await Comment.findOneAndDelete({ id: payload.id });
       return NextResponse.json({ success: true });
     }
 
     if (action === 'sendNotification') {
-      if (!db.notifications) db.notifications = [];
-      db.notifications.push({
+      await Notification.create({
         id: crypto.randomUUID(),
         title: payload.title,
         message: payload.message,
@@ -249,19 +247,33 @@ export async function POST(req: Request) {
         link: payload.link || undefined,
         createdAt: new Date().toISOString()
       });
-      await writeDB(db);
       return NextResponse.json({ success: true });
     }
 
     if (action === 'deleteNotification') {
-      if (!db.notifications) return NextResponse.json({ error: 'No notifications' }, { status: 404 });
-      db.notifications = db.notifications.filter(n => n.id !== payload.id);
-      await writeDB(db);
+      await Notification.findOneAndDelete({ id: payload.id });
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === 'addTvSchedule') {
+      await TvSchedule.create({ id: crypto.randomUUID(), ...payload });
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === 'editTvSchedule') {
+      const updated = await TvSchedule.findOneAndUpdate({ id: payload.id }, payload);
+      if (updated) return NextResponse.json({ success: true });
+      return NextResponse.json({ error: 'TvSchedule not found' }, { status: 404 });
+    }
+
+    if (action === 'deleteTvSchedule') {
+      await TvSchedule.findOneAndDelete({ id: payload.id });
       return NextResponse.json({ success: true });
     }
 
     return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
   } catch (err) {
+    console.error(err);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 }
@@ -273,19 +285,44 @@ export async function GET(req: Request) {
     if (adminToken !== 'b.batin123') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    const db = await readDB();
-    // Return safe data for admin dashboard
-    const users = db.users.map(u => ({ id: u.id, username: u.username, package: u.package, isBanned: u.isBanned, createdAt: u.createdAt, plainPassword: u.plainPassword }));
+    
+    await connectDB();
+    const [users, movies, series, episodes, comments, notifications, config, sportsChannels, coupons, tvSchedules] = await Promise.all([
+      User.find().lean(),
+      Movie.find().lean(),
+      Series.find().lean(),
+      Episode.find().lean(),
+      Comment.find().lean(),
+      Notification.find().lean(),
+      Config.findOne({ key: 'mainConfig' }).lean(),
+      SportsChannel.find().lean(),
+      Coupon.find().lean(),
+      TvSchedule.find().lean()
+    ]);
+
+    const safeUsers = users.map((u: any) => ({ 
+      id: u.id, 
+      username: u.username, 
+      package: u.package, 
+      isBanned: u.isBanned, 
+      createdAt: u.createdAt, 
+      plainPassword: u.plainPassword,
+      isTrial: u.isTrial,
+      trialExpiresAt: u.trialExpiresAt
+    }));
+    
     return NextResponse.json({ 
-      users, 
-      movies: db.movies, 
-      series: db.series, 
-      episodes: db.episodes, 
-      channels: db.channels || [], 
-      livePlaylists: db.livePlaylists || [],
-      comments: db.comments || [],
-      maintenance: db.maintenance || false,
-      notifications: db.notifications || []
+      users: safeUsers, 
+      movies, 
+      series, 
+      episodes, 
+      bsplusTv: (config as any)?.bsplusTv || { streamUrl: '', currentProgram: 'Şu an yayında içerik bulunmuyor.' },
+      comments,
+      maintenance: (config as any)?.maintenance || false,
+      notifications,
+      sportsChannels,
+      coupons,
+      tvSchedules
     });
   } catch (err: any) {
     console.error('Admin API GET Error:', err);

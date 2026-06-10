@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { readDB, writeDB } from '@/lib/db';
+import { connectDB } from '@/lib/mongoose';
+import { Profile } from '@/lib/models';
 import { verifyToken } from '@/lib/auth';
 import { cookies } from 'next/headers';
 
@@ -16,13 +17,13 @@ export async function POST(req: Request) {
 
     const { videoId, type, time, duration } = await req.json(); 
     
-    const db = await readDB();
-    const profile = db.profiles.find(p => p.id === profileId && p.userId === payload.userId);
+    await connectDB();
+    const profile = await Profile.findOne({ id: profileId, userId: payload.userId });
     if (!profile) return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
 
     if (!profile.progress) profile.progress = [];
 
-    const existingIndex = profile.progress.findIndex(p => p.videoId === videoId);
+    const existingIndex = profile.progress.findIndex((p: any) => p.videoId === videoId);
     if (existingIndex > -1) {
       profile.progress[existingIndex].time = time;
       if (duration) profile.progress[existingIndex].duration = duration;
@@ -37,7 +38,8 @@ export async function POST(req: Request) {
       });
     }
 
-    await writeDB(db);
+    profile.markModified('progress');
+    await profile.save();
     return NextResponse.json({ success: true });
   } catch (err) {
     return NextResponse.json({ error: 'Server error' }, { status: 500 });

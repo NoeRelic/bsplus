@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { readDB } from '@/lib/db';
+import { connectDB } from '@/lib/mongoose';
+import { Profile } from '@/lib/models';
 import { verifyToken } from '@/lib/auth';
 import { cookies } from 'next/headers';
 
@@ -15,8 +16,8 @@ export async function POST(req: Request) {
     const { profileId, pin } = await req.json();
     if (!profileId) return NextResponse.json({ error: 'Profile ID required' }, { status: 400 });
 
-    const db = await readDB();
-    const profile = db.profiles.find(p => p.id === profileId && p.userId === payload.userId);
+    await connectDB();
+    const profile = await Profile.findOne({ id: profileId, userId: payload.userId }).lean();
 
     if (!profile) {
       return NextResponse.json({ error: 'Profil bulunamadı' }, { status: 404 });

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { readDB, writeDB } from '@/lib/db';
+import { connectDB } from '@/lib/mongoose';
+import { User, Profile, Notification } from '@/lib/models';
 import { cookies } from 'next/headers';
 import { verifyToken } from '@/lib/auth';
 
@@ -12,14 +13,14 @@ export async function GET() {
     const payload = await verifyToken(token);
     if (!payload) return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
 
-    const db = await readDB();
-    const user = db.users.find(u => u.id === payload.userId);
+    await connectDB();
+    const user = await User.findOne({ id: payload.userId }).lean();
     if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
 
     const profileId = cookieStore.get('profileId')?.value;
-    const profile = db.profiles.find(p => p.id === profileId && p.userId === payload.userId);
+    const profile = await Profile.findOne({ id: profileId, userId: payload.userId }).lean();
 
-    const allNotifications = db.notifications || [];
+    const allNotifications = await Notification.find().lean();
     const userPackage = user.package;
 
     const visibleNotifications = allNotifications.filter(n => {
@@ -47,31 +48,31 @@ export async function POST(req: Request) {
     if (!payload) return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
 
     const { action, notificationId } = await req.json();
-    const db = await readDB();
+    await connectDB();
 
     const profileId = cookieStore.get('profileId')?.value;
-    const profileIdx = db.profiles.findIndex(p => p.id === profileId && p.userId === payload.userId);
+    const profile = await Profile.findOne({ id: profileId, userId: payload.userId });
 
-    if (profileIdx === -1) return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
+    if (!profile) return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
 
     if (action === 'markRead') {
-      if (!db.profiles[profileIdx].readNotifications) {
-        db.profiles[profileIdx].readNotifications = [];
+      if (!profile.readNotifications) {
+        profile.readNotifications = [];
       }
-      if (!db.profiles[profileIdx].readNotifications.includes(notificationId)) {
-        db.profiles[profileIdx].readNotifications.push(notificationId);
-        await writeDB(db);
+      if (!profile.readNotifications.includes(notificationId)) {
+        profile.readNotifications.push(notificationId);
+        await profile.save();
       }
       return NextResponse.json({ success: true });
     }
     
     if (action === 'markAllRead') {
-      const allNotifications = db.notifications || [];
-      const user = db.users.find(u => u.id === payload.userId);
+      const allNotifications = await Notification.find().lean();
+      const user = await User.findOne({ id: payload.userId }).lean();
       const visibleIds = allNotifications.filter(n => !n.targetPackage || n.targetPackage === 'All' || n.targetPackage === user?.package).map(n => n.id);
       
-      db.profiles[profileIdx].readNotifications = Array.from(new Set([...(db.profiles[profileIdx].readNotifications || []), ...visibleIds]));
-      await writeDB(db);
+      profile.readNotifications = Array.from(new Set([...(profile.readNotifications || []), ...visibleIds]));
+      await profile.save();
       return NextResponse.json({ success: true });
     }
 

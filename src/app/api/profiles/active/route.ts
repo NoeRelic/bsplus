@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { readDB } from '@/lib/db';
+import { connectDB } from '@/lib/mongoose';
+import { Profile } from '@/lib/models';
 import { verifyToken } from '@/lib/auth';
 import { cookies } from 'next/headers';
 
@@ -14,8 +15,8 @@ export async function GET(req: Request) {
     const payload = await verifyToken(token);
     if (!payload) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const db = await readDB();
-    const profile = db.profiles.find(p => p.id === profileId && p.userId === payload.userId);
+    await connectDB();
+    const profile = await Profile.findOne({ id: profileId, userId: payload.userId }).lean();
 
     if (!profile) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 

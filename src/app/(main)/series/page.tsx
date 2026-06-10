@@ -1,4 +1,5 @@
-import { readDB, getDailyGoldSeries } from '@/lib/db';
+import { connectDB } from '@/lib/mongoose';
+import { Series, Config } from '@/lib/models';
 import { verifyToken } from '@/lib/auth';
 import { cookies } from 'next/headers';
 import Link from 'next/link';
@@ -22,11 +23,25 @@ export default async function SeriesPage() {
     );
   }
 
-  const db = await readDB();
-  let seriesList = db.series || [];
+  await connectDB();
+  let seriesList = JSON.parse(JSON.stringify(await Series.find().lean())) || [];
 
   if (userPackage === 'Gold') {
-    const dailyIds = await getDailyGoldSeries(db);
+    let config = await Config.findOne({ key: 'mainConfig' });
+    if (!config) config = new Config({ key: 'mainConfig' });
+    
+    const today = new Date().toISOString().split('T')[0];
+    let dailyIds = [];
+    if (config.dailyGoldSeries?.date === today) {
+      dailyIds = config.dailyGoldSeries.seriesIds;
+    } else {
+      const allSeriesIds = seriesList.map(s => s.id);
+      const shuffled = [...allSeriesIds].sort(() => 0.5 - Math.random());
+      dailyIds = shuffled.slice(0, 15);
+      config.dailyGoldSeries = { date: today, seriesIds: dailyIds };
+      await config.save();
+    }
+    
     seriesList = seriesList.filter(s => dailyIds.includes(s.id));
   }
 

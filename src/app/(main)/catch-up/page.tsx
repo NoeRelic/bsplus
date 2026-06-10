@@ -1,4 +1,5 @@
-import { readDB } from '@/lib/db';
+import { connectDB } from '@/lib/mongoose';
+import { Profile, Movie, Episode, Series } from '@/lib/models';
 import { verifyToken } from '@/lib/auth';
 import { cookies } from 'next/headers';
 import Link from 'next/link';
@@ -14,8 +15,8 @@ export default async function CatchUpPage() {
   const payload = await verifyToken(token);
   if (!payload) return <div className="pt-24 px-8 text-white">Yetkisiz erişim.</div>;
 
-  const db = await readDB();
-  const profile = db.profiles.find(p => p.id === profileId && p.userId === payload.userId);
+  await connectDB();
+  const profile = JSON.parse(JSON.stringify(await Profile.findOne({ id: profileId, userId: payload.userId }).lean()));
   
   if (!profile) return <div className="pt-24 px-8 text-white">Profil bulunamadı.</div>;
 
@@ -33,6 +34,15 @@ export default async function CatchUpPage() {
     );
   }
 
+  const movieIds = sortedProgress.filter(p => p.type === 'movie').map(p => p.videoId);
+  const episodeIds = sortedProgress.filter(p => p.type === 'episode').map(p => p.videoId);
+  
+  const movies = JSON.parse(JSON.stringify(await Movie.find({ id: { $in: movieIds } }).lean()));
+  const episodes = JSON.parse(JSON.stringify(await Episode.find({ id: { $in: episodeIds } }).lean()));
+  
+  const seriesIds = episodes.map(e => e.seriesId);
+  const series = JSON.parse(JSON.stringify(await Series.find({ id: { $in: seriesIds } }).lean()));
+
   return (
     <div className="pt-24 px-8 min-h-screen bg-black text-white">
       <h1 className="text-3xl font-bold mb-8">Kaldığın Yerden</h1>
@@ -43,10 +53,10 @@ export default async function CatchUpPage() {
           let link = '';
           
           if (p.type === 'movie') {
-            item = db.movies.find(m => m.id === p.videoId);
+            item = movies.find(m => m.id === p.videoId);
             link = `/watch/movie/${p.videoId}`;
           } else {
-            item = db.episodes.find(e => e.id === p.videoId);
+            item = episodes.find(e => e.id === p.videoId);
             link = `/watch/episode/${p.videoId}`;
           }
 
@@ -57,9 +67,9 @@ export default async function CatchUpPage() {
           let title = item.title;
           
           if (p.type === 'episode') {
-            const series = db.series.find(s => s.id === item.seriesId);
-            bannerUrl = series?.bannerUrl || '';
-            title = `${series?.title} - S${item.seasonNumber}E${item.episodeNumber}`;
+            const seriesObj = series.find(s => s.id === item.seriesId);
+            bannerUrl = seriesObj?.bannerUrl || '';
+            title = `${seriesObj?.title} - S${item.seasonNumber}E${item.episodeNumber}`;
           }
 
           return (

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { readDB, writeDB } from '@/lib/db';
+import { connectDB } from '@/lib/mongoose';
+import { Profile } from '@/lib/models';
 import { verifyToken } from '@/lib/auth';
 import { cookies } from 'next/headers';
 
@@ -16,8 +17,8 @@ export async function POST(req: Request) {
 
     const { audio, subtitle, subColor, subSize } = await req.json(); 
     
-    const db = await readDB();
-    const profile = db.profiles.find(p => p.id === profileId && p.userId === payload.userId);
+    await connectDB();
+    const profile = await Profile.findOne({ id: profileId, userId: payload.userId });
     if (!profile) return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
 
     if (!profile.preferences) {
@@ -29,7 +30,7 @@ export async function POST(req: Request) {
     if (subColor !== undefined) profile.preferences.subColor = subColor;
     if (subSize !== undefined) profile.preferences.subSize = subSize;
 
-    await writeDB(db);
+    await profile.save();
     return NextResponse.json({ success: true, preferences: profile.preferences });
   } catch (err) {
     return NextResponse.json({ error: 'Server error' }, { status: 500 });

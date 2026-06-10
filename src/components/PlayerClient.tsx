@@ -4,6 +4,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, Settings, Subtitles, Check, MessageSquare, X } from 'lucide-react';
 import Hls from 'hls.js';
+import ReactHlsPlayer from 'react-hls-player';
+import SmartImage from './SmartImage';
 import CommentsSectionClient from '@/components/CommentsSectionClient';
 
 const INTRO_URL = "/uploads/intro.mp4";
@@ -117,14 +119,19 @@ export default function PlayerClient({ videoUrl, videoUrlEN, subtitleTR, subtitl
   // Comments Panel State
   const [showComments, setShowComments] = useState(false);
 
-  // Custom Subtitle State
   const [cuesTR, setCuesTR] = useState<Cue[]>([]);
   const [cuesEN, setCuesEN] = useState<Cue[]>([]);
   const [currentSubtitleText, setCurrentSubtitleText] = useState<string>('');
+  const [currentSubTR, setCurrentSubTR] = useState<string>('');
+  const [currentSubEN, setCurrentSubEN] = useState<string>('');
 
   // Auto-play next episode state
   const [upNext, setUpNext] = useState(false);
   const [countdown, setCountdown] = useState(5);
+  
+  // Seek Indicator State
+  const [seekIndicator, setSeekIndicator] = useState<{ show: boolean, text: string }>({ show: false, text: '' });
+  const seekTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
   const actualVideoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -204,6 +211,8 @@ export default function PlayerClient({ videoUrl, videoUrlEN, subtitleTR, subtitl
         if (!res.ok) {
           if (data.error === 'LIMIT_REACHED') {
             setLimitMessage(data.message);
+          } else if (data.error === 'EXPIRED') {
+            setError(data.message);
           } else {
             setError(data.error || 'Oturum başlatılamadı.');
           }
@@ -261,6 +270,22 @@ export default function PlayerClient({ videoUrl, videoUrlEN, subtitleTR, subtitl
             setHlsAudioTracks(hls.audioTracks);
             setCurrentHlsAudioIndex(hls.audioTrack);
           }
+          
+          // Auto-play if intro is not playing
+          const checkIntroAndPlay = setInterval(() => {
+            if (actualVideoRef.current && actualVideoRef.current.paused) {
+              const currentIntroState = document.getElementById('intro-video-element') !== null;
+              if (!currentIntroState) {
+                actualVideoRef.current.play().then(() => setIsPlaying(true)).catch(e => console.log('Auto-play blocked:', e));
+                clearInterval(checkIntroAndPlay);
+              }
+            } else {
+              clearInterval(checkIntroAndPlay);
+            }
+          }, 1000);
+          
+          // Also set a timeout to clear the interval after 30s
+          setTimeout(() => clearInterval(checkIntroAndPlay), 30000);
         });
 
         hls.on(Hls.Events.AUDIO_TRACK_LOADED, () => {
@@ -272,6 +297,7 @@ export default function PlayerClient({ videoUrl, videoUrlEN, subtitleTR, subtitl
         
         let networkErrorCount = 0;
         let mediaErrorCount = 0;
+        let isUsingProxy = false;
 
         hls.on(Hls.Events.ERROR, function (event, data) {
           if (data.fatal && hlsRef.current) {
@@ -281,6 +307,12 @@ export default function PlayerClient({ videoUrl, videoUrlEN, subtitleTR, subtitl
                 if (networkErrorCount < 2) {
                   hlsRef.current.startLoad();
                   networkErrorCount++;
+                } else if (!isUsingProxy) {
+                  console.warn('Network limits reached or CORS blocked. Switching to internal CORS proxy.');
+                  isUsingProxy = true;
+                  networkErrorCount = 0;
+                  const proxyUrl = '/api/proxy-m3u8?url=' + encodeURIComponent(initialSource);
+                  hlsRef.current.loadSource(proxyUrl);
                 } else {
                   console.warn('Network limits reached or not an HLS stream. Falling back to native video tag.');
                   hlsRef.current.destroy();
@@ -420,19 +452,19 @@ export default function PlayerClient({ videoUrl, videoUrlEN, subtitleTR, subtitl
     if (activeDoubleSub && (subtitleTR || cuesTR.length > 0) && (subtitleEN || cuesEN.length > 0)) {
       const cueTR = cuesTR.find(c => v.currentTime >= c.start && v.currentTime <= c.end);
       const cueEN = cuesEN.find(c => v.currentTime >= c.start && v.currentTime <= c.end);
-      let text = '';
-      if (cueTR) text += cueTR.text;
-      if (cueEN) {
-        if (text) text += '\n';
-        text += cueEN.text;
-      }
-      setCurrentSubtitleText(text);
+      setCurrentSubTR(cueTR ? cueTR.text : '');
+      setCurrentSubEN(cueEN ? cueEN.text : '');
+      setCurrentSubtitleText(''); // disable single subtitle text
     } else if (activeSubtitle !== 'off') {
       const activeCues = activeSubtitle === 'tr' ? cuesTR : cuesEN;
       const currentCue = activeCues.find(c => v.currentTime >= c.start && v.currentTime <= c.end);
       setCurrentSubtitleText(currentCue ? currentCue.text : '');
+      setCurrentSubTR('');
+      setCurrentSubEN('');
     } else {
       setCurrentSubtitleText('');
+      setCurrentSubTR('');
+      setCurrentSubEN('');
     }
 
     // Save progress periodically (every ~5 seconds)
@@ -525,6 +557,12 @@ export default function PlayerClient({ videoUrl, videoUrlEN, subtitleTR, subtitl
     const newTime = Math.max(0, Math.min(actualVideoRef.current.currentTime + amount, duration));
     actualVideoRef.current.currentTime = newTime;
     setCurrentTime(newTime);
+    
+    setSeekIndicator({ show: true, text: amount > 0 ? `+${amount} Saniye` : `${amount} Saniye` });
+    if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current);
+    seekTimeoutRef.current = setTimeout(() => {
+      setSeekIndicator(prev => ({ ...prev, show: false }));
+    }, 800);
   };
 
   useEffect(() => {
@@ -601,26 +639,29 @@ export default function PlayerClient({ videoUrl, videoUrlEN, subtitleTR, subtitl
       `}</style>
       <button 
         onClick={(e) => { e.stopPropagation(); router.back(); }} 
-        className={`absolute top-8 left-8 z-50 text-white/70 hover:text-white transition-opacity duration-300 ${showControls || introPlaying ? 'opacity-100' : 'opacity-0'}`}
+        className={`absolute top-8 left-8 z-50 glass-heavy px-4 py-3 rounded-2xl text-white/80 hover:text-white transition-all duration-300 border border-white/10 hover:border-white/30 flex items-center gap-3 shadow-lg hover:scale-105 group ${showControls || introPlaying ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'}`}
       >
-        <ArrowLeft className="w-10 h-10" />
+        <ArrowLeft className="w-6 h-6 group-hover:-translate-x-1 transition-transform" />
+        <span className="font-semibold hidden sm:inline">Geri Dön</span>
       </button>
 
       {introPlaying && (
         <div className="absolute inset-0 z-[60] bg-black">
           <video 
+            id="intro-video-element"
             src={INTRO_URL}
             autoPlay
+            playsInline
             muted={false}
             onEnded={() => setIntroPlaying(false)}
-            className="w-full h-full object-contain"
-            controls={false}
+            className="w-full h-full object-cover"
           />
           <button 
-            onClick={(e) => { e.stopPropagation(); setIntroPlaying(false); }} 
-            className="absolute bottom-10 right-10 bg-white/10 hover:bg-white/20 text-white px-8 py-3 rounded-full font-bold backdrop-blur-md transition-all border border-white/20 hover:scale-105 z-50"
+            onClick={() => setIntroPlaying(false)}
+            className="absolute bottom-12 right-12 glass-heavy text-white px-8 py-4 rounded-2xl font-bold transition-all border border-white/20 hover:border-[#9155fd] shadow-[0_0_30px_rgba(145,85,253,0.3)] hover:shadow-[0_0_50px_rgba(145,85,253,0.6)] hover:scale-105 z-50 flex items-center gap-3 group"
           >
-            İntroyu Geç ⏭
+            İntroyu Geç 
+            <Play className="w-5 h-5 fill-current group-hover:translate-x-1 transition-transform" />
           </button>
         </div>
       )}
@@ -630,6 +671,7 @@ export default function PlayerClient({ videoUrl, videoUrlEN, subtitleTR, subtitl
         <video
           ref={actualVideoRef}
           className="w-full h-full"
+          playsInline
           muted={isMuted}
           onTimeUpdate={handleTimeUpdate}
           onLoadedMetadata={handleLoadedMetadata}
@@ -643,13 +685,46 @@ export default function PlayerClient({ videoUrl, videoUrlEN, subtitleTR, subtitl
         />
 
           {/* Custom Subtitle Overlay */}
-          {currentSubtitleText && !introPlaying && (
-            <div 
-              className="absolute left-0 w-full text-center pointer-events-none flex flex-col items-center gap-1 transition-all duration-300"
-              style={{ bottom: showControls ? '130px' : '60px' }}
-            >
+          <div 
+            className="absolute left-0 w-full text-center pointer-events-none flex flex-col items-center gap-1 transition-all duration-300 z-30"
+            style={{ bottom: showControls ? '130px' : '60px' }}
+          >
+            {activeDoubleSub && !introPlaying ? (
+              <>
+                {currentSubTR && (
+                  <div 
+                    className="px-6 py-2 rounded-lg text-glow transition-all duration-300 max-w-[80%] whitespace-pre-wrap mb-1 shadow-lg"
+                    style={{
+                      color: subColor,
+                      fontSize: subSize,
+                      backgroundColor: 'rgba(0, 0, 0, 0.75)',
+                      textShadow: '2px 2px 4px rgba(0,0,0,0.9)',
+                      fontWeight: '600',
+                      lineHeight: '1.4'
+                    }}
+                  >
+                    {currentSubTR}
+                  </div>
+                )}
+                {currentSubEN && (
+                  <div 
+                    className="px-6 py-2 rounded-lg text-glow transition-all duration-300 max-w-[80%] whitespace-pre-wrap shadow-lg"
+                    style={{
+                      color: subColor,
+                      fontSize: `calc(${subSize} * 0.85)`, // slightly smaller
+                      backgroundColor: 'rgba(50, 50, 50, 0.85)', // solid gray background
+                      textShadow: '1px 1px 3px rgba(0,0,0,0.9)',
+                      fontWeight: '500',
+                      lineHeight: '1.4'
+                    }}
+                  >
+                    {currentSubEN}
+                  </div>
+                )}
+              </>
+            ) : currentSubtitleText && !introPlaying ? (
               <div 
-                className="px-6 py-2 rounded-lg text-glow transition-all duration-300 max-w-[80%] whitespace-pre-wrap"
+                className="px-6 py-2 rounded-lg text-glow transition-all duration-300 max-w-[80%] whitespace-pre-wrap shadow-lg"
                 style={{
                   color: subColor,
                   fontSize: subSize,
@@ -660,6 +735,16 @@ export default function PlayerClient({ videoUrl, videoUrlEN, subtitleTR, subtitl
                 }}
               >
                 {currentSubtitleText}
+              </div>
+            ) : null}
+          </div>
+
+          {/* Seek Indicator Overlay */}
+          {seekIndicator.show && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-40">
+              <div className="bg-black/60 backdrop-blur-md text-white px-8 py-6 rounded-3xl font-display font-bold text-3xl md:text-5xl shadow-[0_0_30px_rgba(145,85,253,0.4)] animate-scale-fade border border-white/10 flex items-center gap-4">
+                {seekIndicator.text.includes('+') ? <ArrowLeft className="w-10 h-10 transform rotate-180" /> : <ArrowLeft className="w-10 h-10" />}
+                {seekIndicator.text}
               </div>
             </div>
           )}
@@ -709,9 +794,9 @@ export default function PlayerClient({ videoUrl, videoUrlEN, subtitleTR, subtitl
                   <Link 
                     key={item.id} 
                     href={`/watch/${item.mediaType}/${item.id}`}
-                    className="relative aspect-video group overflow-hidden rounded-lg cursor-pointer transition-transform hover:scale-105"
+                    className="aspect-[2/3] md:aspect-video lg:aspect-[2/3] relative overflow-hidden rounded-xl border border-white/5 bg-zinc-900 group-hover:border-white/20 transition-colors flex flex-col justify-end"
                   >
-                    <img src={item.bannerUrl} alt={item.title} className="w-full h-full object-cover" />
+                    <SmartImage src={item.bannerUrl} title={item.title} categories={item.categories} type={item.mediaType} className="absolute inset-0 w-full h-full object-cover" />
                     <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                       <Play className="w-12 h-12 text-white" />
                     </div>
@@ -724,13 +809,13 @@ export default function PlayerClient({ videoUrl, videoUrlEN, subtitleTR, subtitl
             </div>
           )}
 
-          {/* Custom Controls Overlay */}
+          {/* Custom Controls Overlay - Floating Glassmorphic Design */}
           <div 
             onClick={(e) => e.stopPropagation()} 
-            className={`absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/90 via-black/50 to-transparent transition-opacity duration-300 flex flex-col gap-4 ${showControls ? 'opacity-100' : 'opacity-0'}`}
+            className={`absolute bottom-6 left-1/2 transform -translate-x-1/2 w-[96%] max-w-7xl p-6 glass-heavy rounded-3xl border border-white/10 transition-all duration-500 flex flex-col gap-5 ${showControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12 pointer-events-none'} z-50 shadow-[0_20px_50px_rgba(0,0,0,0.5)]`}
           >
             <div className="flex items-center gap-4 text-white">
-              <span className="text-xl font-bold">{title}</span>
+              <span className="text-2xl font-display font-bold drop-shadow-md text-white/90">{title}</span>
               {mediaId && mediaType && (
                 <div className="ml-4">
                   <FavoriteButtonClient id={mediaId} type={mediaType} initialFavorite={initialFavorite || false} />
@@ -739,33 +824,33 @@ export default function PlayerClient({ videoUrl, videoUrlEN, subtitleTR, subtitl
             </div>
 
             <div className="flex items-center gap-4">
-              <span className="text-white text-sm font-medium w-12 text-center">{formatTime(currentTime)}</span>
+              <span className="text-white text-sm font-medium w-12 text-center opacity-80">{formatTime(currentTime)}</span>
               <input 
                 type="range" 
                 min="0" 
                 max="100" 
                 value={progress || 0} 
                 onChange={handleSeek}
-                className="w-full h-1 bg-zinc-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-[#9155fd] shadow-[0_0_10px_rgba(145,85,253,0.5)]"
               />
-              <span className="text-white text-sm font-medium w-12 text-center">{formatTime(duration)}</span>
+              <span className="text-white text-sm font-medium w-12 text-center opacity-80">{formatTime(duration)}</span>
             </div>
 
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-6">
-                <button onClick={togglePlay} className="text-white hover:text-blue-500 transition-colors">
-                  {isPlaying ? <Pause className="w-8 h-8" /> : <Play className="w-8 h-8" />}
+                <button onClick={togglePlay} className="text-white hover:text-[#9155fd] transition-colors hover:scale-110 transform">
+                  {isPlaying ? <Pause className="w-8 h-8 fill-current" /> : <Play className="w-8 h-8 fill-current" />}
                 </button>
 
-                <button onClick={(e) => { e.stopPropagation(); skipTime(-10); }} className="text-white hover:text-blue-500 text-sm font-bold opacity-80 hover:opacity-100 transition-opacity flex gap-1 items-center bg-white/10 px-2 py-1 rounded-md">
+                <button onClick={(e) => { e.stopPropagation(); skipTime(-10); }} className="text-white hover:text-[#5579fd] text-sm font-bold opacity-80 hover:opacity-100 transition-all flex gap-1 items-center bg-white/5 px-3 py-1.5 rounded-lg border border-white/5 hover:border-white/20">
                   <span>-10s</span>
                 </button>
-                <button onClick={(e) => { e.stopPropagation(); skipTime(10); }} className="text-white hover:text-blue-500 text-sm font-bold opacity-80 hover:opacity-100 transition-opacity flex gap-1 items-center bg-white/10 px-2 py-1 rounded-md">
+                <button onClick={(e) => { e.stopPropagation(); skipTime(10); }} className="text-white hover:text-[#5579fd] text-sm font-bold opacity-80 hover:opacity-100 transition-all flex gap-1 items-center bg-white/5 px-3 py-1.5 rounded-lg border border-white/5 hover:border-white/20">
                   <span>+10s</span>
                 </button>
 
                 <div className="flex items-center gap-2 group/vol">
-                  <button onClick={toggleMute} className="text-white hover:text-blue-500 transition-colors">
+                  <button onClick={toggleMute} className="text-white hover:text-[#9155fd] transition-colors">
                     {isMuted || volume === 0 ? <VolumeX className="w-6 h-6" /> : <Volume2 className="w-6 h-6" />}
                   </button>
                   <input 
@@ -773,21 +858,21 @@ export default function PlayerClient({ videoUrl, videoUrlEN, subtitleTR, subtitl
                     min="0" max="1" step="0.01" 
                     value={isMuted ? 0 : volume} 
                     onChange={handleVolume}
-                    className="w-0 opacity-0 group-hover/vol:w-24 group-hover/vol:opacity-100 transition-all duration-300 h-1 bg-zinc-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                    className="w-0 opacity-0 group-hover/vol:w-24 group-hover/vol:opacity-100 transition-all duration-300 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-[#9155fd]"
                   />
                 </div>
               </div>
 
-              <div className="flex items-center gap-6 relative">
+                <div className="flex items-center gap-6 relative">
                 {mediaId && (
                   <button 
                     onClick={() => {
                       setShowComments(!showComments);
                       setShowSettings(false);
-                      if (!showComments) actualVideoRef.current?.pause(); // Pause video when opening comments
+                      if (!showComments) actualVideoRef.current?.pause();
                       else actualVideoRef.current?.play();
                     }}
-                    className="text-white hover:text-blue-500 transition-colors flex items-center gap-2"
+                    className="text-white hover:text-[#9155fd] transition-colors flex items-center gap-2"
                   >
                     <MessageSquare className="w-6 h-6" />
                     <span className="text-sm font-bold uppercase hidden md:inline">Yorumlar</span>
@@ -796,13 +881,13 @@ export default function PlayerClient({ videoUrl, videoUrlEN, subtitleTR, subtitl
 
                 <button 
                   onClick={() => { setShowSettings(!showSettings); setShowComments(false); }}
-                  className="text-white hover:text-blue-500 transition-colors flex items-center gap-2"
+                  className="text-white hover:text-[#9155fd] transition-colors flex items-center gap-2"
                 >
                   <Subtitles className="w-6 h-6" />
                   <span className="text-sm font-bold uppercase hidden md:inline">Dil & Altyazı</span>
                 </button>
 
-                <button onClick={toggleFullscreen} className="text-white hover:text-blue-500 transition-colors">
+                <button onClick={toggleFullscreen} className="text-white hover:text-[#9155fd] transition-colors">
                   <Maximize className="w-6 h-6" />
                 </button>
 

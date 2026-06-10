@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { readDB, writeDB } from '@/lib/db';
+import { connectDB } from '@/lib/mongoose';
+import { Movie, Series, Episode, LivePlaylist } from '@/lib/models';
 import { cookies } from 'next/headers';
 import crypto from 'crypto';
 
@@ -14,20 +15,18 @@ export async function POST(req: Request) {
     const formData = await req.formData();
     const category = formData.get('category') as string; // 'movie' | 'series' | 'live'
     
-    const db = await readDB();
+    await connectDB();
 
     if (category === 'live') {
       const url = formData.get('url') as string;
       const name = formData.get('name') as string || 'Canlı Yayın Listesi';
       if (!url) return NextResponse.json({ error: 'Live TV için URL zorunludur' }, { status: 400 });
       
-      if (!db.livePlaylists) db.livePlaylists = [];
-      db.livePlaylists.push({
+      await LivePlaylist.create({
         id: crypto.randomUUID(),
         name,
         url
       });
-      await writeDB(db);
       return NextResponse.json({ success: true, message: 'Live TV playlist başarıyla eklendi.' });
     }
 
@@ -99,7 +98,7 @@ export async function POST(req: Request) {
         }
 
         if (!isSeries) {
-          db.movies.push({
+          await Movie.create({
             id: crypto.randomUUID(),
             title: currentTitle,
             type: 'Film',
@@ -112,17 +111,14 @@ export async function POST(req: Request) {
           movieCount++;
         } else {
           // Series Logic: Find existing series or create new
-          if (!db.series) db.series = [];
-          if (!db.episodes) db.episodes = [];
-          
-          let existingSeries = db.series.find(s => s.title.toLowerCase() === seriesTitle.toLowerCase());
+          let existingSeries = await Series.findOne({ title: { $regex: new RegExp('^' + seriesTitle + '$', 'i') } });
           let seriesId = '';
           
           if (existingSeries) {
             seriesId = existingSeries.id;
           } else {
             seriesId = crypto.randomUUID();
-            db.series.push({
+            await Series.create({
               id: seriesId,
               title: seriesTitle,
               story: '',
@@ -133,7 +129,7 @@ export async function POST(req: Request) {
             seriesCount++;
           }
           
-          db.episodes.push({
+          await Episode.create({
             id: crypto.randomUUID(),
             seriesId: seriesId,
             seasonNumber: seasonNumber,
@@ -149,8 +145,6 @@ export async function POST(req: Request) {
       }
     }
 
-    await writeDB(db);
-    
     // Background scanner'ı ateşle
     import('@/lib/scanner').then(m => m.startBackgroundScan()).catch(console.error);
 

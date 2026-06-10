@@ -1,7 +1,19 @@
-import { Check, Info } from 'lucide-react';
+'use client';
+
+import { Check, Info, Ticket, X, Loader2 } from 'lucide-react';
 import Link from 'next/link';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 export default function PackagesPage() {
+  const router = useRouter();
+  const [showCouponModal, setShowCouponModal] = useState(false);
+  const [couponCode, setCouponCode] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
   const packages = [
     {
       name: 'Iron Pack',
@@ -48,6 +60,32 @@ export default function PackagesPage() {
     },
   ];
 
+  const handleApplyCoupon = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      const res = await fetch('/api/coupons/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: couponCode, username, password })
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || 'Bir hata oluştu.');
+      } else {
+        alert('Kupon başarıyla uygulandı ve deneme hesabınız oluşturuldu!');
+        router.push('/profiles');
+      }
+    } catch (err) {
+      setError('Sunucu bağlantı hatası.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-black text-white relative flex flex-col pt-12 pb-24 px-6 items-center">
       <div className="absolute top-0 left-0 w-full h-[50vh] bg-gradient-to-b from-blue-900/20 to-black z-0 pointer-events-none" />
@@ -63,6 +101,14 @@ export default function PackagesPage() {
         <div className="text-center mb-16">
           <h1 className="text-4xl md:text-5xl font-bold mb-4">Sonsuz Eğlenceye Katılın</h1>
           <p className="text-xl text-zinc-400">Tek seferlik ödeme ile sınırsız BS+ deneyimi.</p>
+          
+          <button 
+            onClick={() => setShowCouponModal(true)}
+            className="mt-8 mx-auto flex items-center justify-center gap-2 bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.1)] hover:bg-[rgba(255,255,255,0.1)] text-white px-6 py-3 rounded-full transition-all text-sm font-medium shadow-lg hover:-translate-y-1"
+          >
+            <Ticket className="w-5 h-5 text-purple-400" />
+            Kupon Kodun Var Mı?
+          </button>
         </div>
 
         <div className="grid md:grid-cols-3 gap-8 mb-16">
@@ -114,6 +160,80 @@ export default function PackagesPage() {
           </div>
         </div>
       </div>
+
+      {showCouponModal && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-[#1e1e2d] border border-[rgba(255,255,255,0.1)] rounded-2xl w-full max-w-md p-8 relative shadow-2xl">
+            <button 
+              onClick={() => setShowCouponModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-white"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            <div className="flex flex-col items-center mb-6">
+              <div className="w-16 h-16 bg-purple-500/20 rounded-full flex items-center justify-center mb-4 border border-purple-500/30 shadow-[0_0_15px_rgba(168,85,247,0.4)]">
+                <Ticket className="w-8 h-8 text-purple-400" />
+              </div>
+              <h2 className="text-2xl font-bold text-center">Kupon Kodu Kullan</h2>
+              <p className="text-zinc-400 text-center text-sm mt-2">
+                Kupon kodunuzla ücretsiz deneme hesabınızı oluşturun.
+              </p>
+            </div>
+            
+            <form onSubmit={handleApplyCoupon} className="space-y-4">
+              {error && (
+                <div className="bg-red-500/20 border border-red-500/50 text-red-200 p-3 rounded-lg text-sm text-center">
+                  {error}
+                </div>
+              )}
+              
+              <div>
+                <label className="block text-sm text-zinc-400 mb-1">Kupon Kodu</label>
+                <input 
+                  type="text"
+                  required
+                  value={couponCode}
+                  onChange={e => setCouponCode(e.target.value)}
+                  className="w-full bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.1)] rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500 uppercase transition-colors"
+                  placeholder="KODU GİRİN"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-zinc-400 mb-1">Kullanıcı Adı Belirle</label>
+                <input 
+                  type="text"
+                  required
+                  value={username}
+                  onChange={e => setUsername(e.target.value)}
+                  className="w-full bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.1)] rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500 transition-colors"
+                  placeholder="Kullanıcı Adı"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-zinc-400 mb-1">Şifre Belirle</label>
+                <input 
+                  type="password"
+                  required
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  className="w-full bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.1)] rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500 transition-colors"
+                  placeholder="••••••••"
+                />
+              </div>
+
+              <button 
+                type="submit" 
+                disabled={loading}
+                className="w-full bg-purple-600 hover:bg-purple-500 text-white rounded-xl py-3.5 font-bold transition-all shadow-[0_0_15px_rgba(147,51,234,0.3)] hover:shadow-[0_0_25px_rgba(147,51,234,0.5)] flex items-center justify-center mt-2 disabled:opacity-50"
+              >
+                {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : 'Kodu Uygula ve Kayıt Ol'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

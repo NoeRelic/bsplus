@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { readDB, writeDB } from '@/lib/db';
+import { connectDB } from '@/lib/mongoose';
+import { Movie, Series, Episode } from '@/lib/models';
 import { cookies } from 'next/headers';
 import crypto from 'crypto';
 import { parseSeriesTitle } from '@/lib/series-parser';
@@ -17,9 +18,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
     }
 
-    const db = await readDB();
-    if (!db.series) db.series = [];
-    if (!db.episodes) db.episodes = [];
+    await connectDB();
 
     let movieCount = 0;
     let seriesCount = 0;
@@ -47,7 +46,7 @@ export async function POST(req: Request) {
 
       if (!isSeries) {
         // ── Movie ────────────────────────────────────────────────────────────
-        db.movies.push({
+        await Movie.create({
           id: crypto.randomUUID(),
           title: currentTitle,
           type: 'Film',
@@ -72,16 +71,16 @@ export async function POST(req: Request) {
       }
 
       // ── Find or create the series ─────────────────────────────────────────
-      let existingSeries = db.series.find(
-        (s: any) => s.title.toLowerCase() === seriesTitle.toLowerCase()
-      );
+      let existingSeries = await Series.findOne({
+        title: { $regex: new RegExp('^' + seriesTitle + '$', 'i') }
+      });
       let seriesId: string;
 
       if (existingSeries) {
         seriesId = existingSeries.id;
       } else {
         seriesId = crypto.randomUUID();
-        db.series.push({
+        await Series.create({
           id: seriesId,
           title: seriesTitle,
           story: '',
@@ -93,7 +92,7 @@ export async function POST(req: Request) {
       }
 
       // ── Add the episode ───────────────────────────────────────────────────
-      db.episodes.push({
+      await Episode.create({
         id: crypto.randomUUID(),
         seriesId,
         seasonNumber: parsed.seasonNumber,
@@ -102,8 +101,6 @@ export async function POST(req: Request) {
         videoUrl,
       });
     }
-
-    await writeDB(db);
 
     // Background scan for metadata
     import('@/lib/scanner').then(m => m.startBackgroundScan()).catch(console.error);

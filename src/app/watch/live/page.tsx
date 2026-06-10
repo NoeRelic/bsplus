@@ -13,29 +13,85 @@ function LivePlayer() {
   const hlsRef = useRef<Hls | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(false);
 
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
+    if (!streamUrl || !videoRef.current) return;
+
+    const urlLower = streamUrl.toLowerCase();
+    const isNative = !urlLower.includes('.m3u8') && (urlLower.includes('.mp4') || urlLower.includes('.mkv') || urlLower.includes('.webm') || urlLower.includes('.ogg'));
+
+    if (isNative) {
+      videoRef.current.src = streamUrl;
+      videoRef.current.addEventListener('loadedmetadata', () => {
+        setLoading(false);
+        videoRef.current?.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+      });
+      return;
+    }
 
     if (Hls.isSupported()) {
-      const hls = new Hls({ enableWorker: true, lowLatencyMode: true });
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+      }
+
+      const hls = new Hls({
+        maxBufferLength: 30,
+        enableWorker: true,
+        lowLatencyMode: true,
+      });
       hlsRef.current = hls;
+
       hls.loadSource(streamUrl);
-      hls.attachMedia(video);
+      hls.attachMedia(videoRef.current);
+
+      let networkErrorCount = 0;
+      let mediaErrorCount = 0;
+      let isUsingProxy = false;
+
+      hls.on(Hls.Events.ERROR, function (event, eventData) {
+        if (eventData.fatal) {
+          switch (eventData.type) {
+            case Hls.ErrorTypes.NETWORK_ERROR:
+              if (networkErrorCount < 3) {
+                hls.startLoad();
+                networkErrorCount++;
+              } else if (!isUsingProxy) {
+                isUsingProxy = true;
+                networkErrorCount = 0;
+                const proxyUrl = '/api/proxy-m3u8?url=' + encodeURIComponent(streamUrl);
+                hls.loadSource(proxyUrl);
+              } else {
+                setError('Yayın bağlantısı kurulamıyor. Yayın kapalı olabilir veya CORS engeli aşılamıyor.');
+                hls.destroy();
+              }
+              break;
+            case Hls.ErrorTypes.MEDIA_ERROR:
+              if (mediaErrorCount < 3) {
+                hls.recoverMediaError();
+                mediaErrorCount++;
+              } else {
+                setError('Medya hatası: Video oynatılamıyor.');
+                hls.destroy();
+              }
+              break;
+            default:
+              hls.destroy();
+              break;
+          }
+        }
+      });
+
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         setLoading(false);
-        video.play().catch(() => {});
+        setError('');
+        videoRef.current?.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
       });
-      hls.on(Hls.Events.ERROR, (_, data) => {
-        if (data.fatal) setError('Yayın yüklenemedi. Lütfen tekrar deneyin.');
-      });
-      return () => { hls.destroy(); };
-    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = streamUrl;
-      video.addEventListener('loadedmetadata', () => {
+    } else if (videoRef.current.canPlayType('application/vnd.apple.mpegurl')) {
+      videoRef.current.src = streamUrl;
+      videoRef.current.addEventListener('loadedmetadata', () => {
         setLoading(false);
-        video.play().catch(() => {});
+        videoRef.current?.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
       });
     } else {
       setError('Tarayıcınız bu formatı desteklemiyor.');

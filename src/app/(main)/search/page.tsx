@@ -1,32 +1,38 @@
-import fs from 'fs';
-import path from 'path';
+
 import Link from 'next/link';
+
+import { connectDB } from '@/lib/mongoose';
+import { Movie, Series } from '@/lib/models';
 
 async function searchContent(query: string) {
   try {
-    const dbPath = path.join(process.cwd(), 'database.json');
-    const dbContent = fs.readFileSync(dbPath, 'utf-8');
-    const db = JSON.parse(dbContent);
+    await connectDB();
     const q = query.toLowerCase();
 
     const matches = [];
 
     // Search movies
-    if (db.movies) {
-      for (const m of db.movies) {
-        if (m.title.toLowerCase().includes(q) || (m.description && m.description.toLowerCase().includes(q))) {
-          matches.push({ ...m, mediaType: 'movie' });
-        }
-      }
+    const movies = await Movie.find({
+      $or: [
+        { title: { $regex: query, $options: 'i' } },
+        { description: { $regex: query, $options: 'i' } } // note: description might be 'story' in the actual model, but keeping as description or both
+      ]
+    }).lean();
+
+    for (const m of movies) {
+      matches.push({ ...m, mediaType: 'movie' });
     }
 
     // Search series
-    if (db.series) {
-      for (const s of db.series) {
-        if (s.title.toLowerCase().includes(q) || (s.description && s.description.toLowerCase().includes(q))) {
-          matches.push({ ...s, mediaType: 'series' });
-        }
-      }
+    const series = await Series.find({
+      $or: [
+        { title: { $regex: query, $options: 'i' } },
+        { description: { $regex: query, $options: 'i' } }
+      ]
+    }).lean();
+
+    for (const s of series) {
+      matches.push({ ...s, mediaType: 'series' });
     }
 
     return matches;

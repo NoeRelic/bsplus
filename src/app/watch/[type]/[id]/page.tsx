@@ -1,4 +1,5 @@
-import { readDB } from '@/lib/db';
+import { connectDB } from '@/lib/mongoose';
+import { User, Profile, Movie, Series, Episode } from '@/lib/models';
 import PlayerClient from '@/components/PlayerClient';
 import { cookies } from 'next/headers';
 import { verifyToken } from '@/lib/auth';
@@ -6,7 +7,7 @@ import TitleScreenWrapper from '@/components/TitleScreenWrapper';
 
 export default async function WatchPage({ params }: { params: Promise<{ type: string, id: string }> }) {
   const { type, id } = await params;
-  const db = await readDB();
+  await connectDB();
 
   const cookieStore = await cookies();
   const token = cookieStore.get('token')?.value;
@@ -20,20 +21,20 @@ export default async function WatchPage({ params }: { params: Promise<{ type: st
   if (token && profileId) {
     const payload = await verifyToken(token);
     if (payload) {
-      const user = db.users?.find(u => u.id === payload.userId);
+      const user = await User.findOne({ id: payload.userId }).lean();
       if (user) userPackage = user.package;
 
-      const profile = db.profiles?.find(p => p.id === profileId && p.userId === payload.userId);
+      const profile = await Profile.findOne({ id: profileId, userId: payload.userId }).lean();
       if (profile) {
         if (profile.progress) {
-          const prog = profile.progress.find(p => p.videoId === id);
+          const prog = profile.progress.find((p: any) => p.videoId === id);
           if (prog) initialTime = prog.time;
         }
         if (profile.favorites) {
-          isFavorite = profile.favorites.some(f => f.id === id && f.type === type);
+          isFavorite = profile.favorites.some((f: any) => f.id === id && f.type === type);
         }
         if (profile.preferences) {
-          initialPrefs = profile.preferences;
+          initialPrefs = JSON.parse(JSON.stringify(profile.preferences));
         }
       }
     }
@@ -69,7 +70,7 @@ export default async function WatchPage({ params }: { params: Promise<{ type: st
   let cast: any[] = [];
 
   if (type === 'movie') {
-    const movie = db.movies?.find(m => m.id === id);
+    const movie = await Movie.findOne({ id }).lean();
     if (!movie) return <div className="text-white text-center mt-20">Film bulunamadı.</div>;
     videoUrl = movie.videoUrl;
     videoUrlEN = movie.videoUrlEN || '';
@@ -79,46 +80,40 @@ export default async function WatchPage({ params }: { params: Promise<{ type: st
     story = movie.story || '';
     bannerUrl = movie.bannerUrl || 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?auto=format&fit=crop&q=80';
     director = movie.director || '';
-    cast = movie.cast || [];
+    cast = movie.cast ? JSON.parse(JSON.stringify(movie.cast)) : [];
 
     // Similar movies
-    similarItems = (db.movies || [])
-      .filter(m => m.id !== id && m.type === movie.type)
-      .slice(0, 4)
-      .map(m => ({ ...m, mediaType: 'movie' }));
+    const simMovies = await Movie.find({ type: movie.type, id: { $ne: id } }).limit(4).lean();
+    similarItems = simMovies.map(m => ({ ...m, _id: undefined, mediaType: 'movie' }));
   } else if (type === 'episode') {
-    const episode = db.episodes?.find((e: any) => e.id === id);
+    const episode = await Episode.findOne({ id }).lean();
     if (!episode) return <div className="text-white text-center mt-20">Bölüm bulunamadı.</div>;
-    const series = db.series?.find((s: any) => s.id === episode.seriesId);
+    const series = await Series.findOne({ id: episode.seriesId }).lean();
 
     // Detect language variant of THIS episode
     const isDublaj = /dublaj/i.test(episode.title);
     const isAltyazi = /altyaz/i.test(episode.title);
     dubType = isDublaj ? 'dublaj' : isAltyazi ? 'altyazi' : undefined;
 
-    // Find sibling: same series, same season, same episode number, but different language
-    const sibling = (db.episodes || []).find((e: any) =>
-      e.seriesId === episode.seriesId &&
-      e.seasonNumber === episode.seasonNumber &&
-      e.episodeNumber === episode.episodeNumber &&
-      e.id !== episode.id &&
-      // Sibling must be the "other" language
-      ((isDublaj && /altyaz/i.test(e.title)) ||
-       (isAltyazi && /dublaj/i.test(e.title)) ||
-       (!isDublaj && !isAltyazi)) // if no lang marker, just pick a sibling anyway
-    );
+    // Find sibling
+    let matchQuery: any = {
+      seriesId: episode.seriesId,
+      seasonNumber: episode.seasonNumber,
+      episodeNumber: episode.episodeNumber,
+      id: { $ne: episode.id }
+    };
+    if (isDublaj) matchQuery.title = /altyaz/i;
+    else if (isAltyazi) matchQuery.title = /dublaj/i;
+
+    const sibling = await Episode.findOne(matchQuery).lean();
 
     videoUrl = episode.videoUrl;
-    // If THIS is Altyazı, set altyazı as primary and sibling (Dublaj) as secondary
-    // If THIS is Dublaj (or unknown), keep as-is
     let siblingUrl = sibling?.videoUrl || episode.videoUrlEN || '';
 
     if (isAltyazi && sibling) {
-      // Swap: play altyazı first, dublaj as "EN" slot
       videoUrl = episode.videoUrl;
       siblingUrl = sibling.videoUrl;
     } else if (isDublaj && sibling) {
-      // Primary = Dublaj, secondary = Altyazı
       videoUrl = episode.videoUrl;
       siblingUrl = sibling.videoUrl;
     }
@@ -131,12 +126,11 @@ export default async function WatchPage({ params }: { params: Promise<{ type: st
     bannerUrl = episode.bannerUrl || series?.bannerUrl || 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?auto=format&fit=crop&q=80';
     if (series) {
       director = series.director || '';
-      cast = series.cast || [];
+      cast = series.cast ? JSON.parse(JSON.stringify(series.cast)) : [];
     }
 
-    // Auto-Play Next Episode Logic — skip sibling duplicates, advance by unique episode number
-    const allEps: any[] = (db.episodes || []).filter((e: any) => e.seriesId === episode.seriesId);
-    // Build ordered unique (season, epNumber) pairs
+    // Auto-Play Next Episode Logic
+    const allEps = await Episode.find({ seriesId: episode.seriesId }).lean();
     const uniquePairs = Array.from(
       new Map(
         allEps

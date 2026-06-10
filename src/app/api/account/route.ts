@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { readDB, writeDB } from '@/lib/db';
+import { connectDB } from '@/lib/mongoose';
+import { User } from '@/lib/models';
 import { verifyToken } from '@/lib/auth';
 import { cookies } from 'next/headers';
 import bcrypt from 'bcryptjs';
@@ -13,16 +14,15 @@ export async function GET(req: Request) {
     const payload = await verifyToken(token);
     if (!payload) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const db = await readDB();
-    const user = db.users.find(u => u.id === payload.userId);
+    await connectDB();
+    const user = await User.findOne({ id: payload.userId }).lean();
 
     if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
 
     return NextResponse.json({ 
       user: { 
         username: user.username, 
-        package: user.package,
-        twoFactorEnabled: user.twoFactorEnabled 
+        package: user.package
       } 
     });
   } catch (err) {
@@ -39,33 +39,42 @@ export async function POST(req: Request) {
     const payload = await verifyToken(token);
     if (!payload) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const { username, password, twoFactorEnabled } = await req.json();
-    const db = await readDB();
-    const userIndex = db.users.findIndex(u => u.id === payload.userId);
+    const { username, password, currentPassword } = await req.json();
+    await connectDB();
+    const user = await User.findOne({ id: payload.userId });
 
-    if (userIndex === -1) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+
+    if (!currentPassword) {
+      return NextResponse.json({ error: 'Mevcut şifreniz gereklidir.' }, { status: 400 });
+    }
+
+    const isValidPassword = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!isValidPassword) {
+      return NextResponse.json({ error: 'Mevcut şifreniz yanlış.' }, { status: 400 });
+    }
+
+    const updates: any = {};
 
     // Update username if provided and unique
-    if (username && username !== db.users[userIndex].username) {
-      if (db.users.find(u => u.username === username)) {
+    if (username && username !== user.username) {
+      const existingUser = await User.findOne({ username }).lean();
+      if (existingUser) {
         return NextResponse.json({ error: 'Bu kullanıcı adı zaten alınmış.' }, { status: 400 });
       }
-      db.users[userIndex].username = username;
+      updates.username = username;
     }
 
     // Update password if provided
     if (password) {
-      db.users[userIndex].passwordHash = await bcrypt.hash(password, 10);
-      // Optional: Update plainPassword too if you want admin to see it, but usually user changes it privately
-      db.users[userIndex].plainPassword = password;
+      updates.passwordHash = await bcrypt.hash(password, 10);
+      updates.plainPassword = password;
     }
 
-    // Update 2FA
-    if (twoFactorEnabled !== undefined) {
-      db.users[userIndex].twoFactorEnabled = twoFactorEnabled;
+    if (Object.keys(updates).length > 0) {
+      await User.findOneAndUpdate({ id: payload.userId }, { $set: updates });
     }
 
-    await writeDB(db);
     return NextResponse.json({ success: true });
   } catch (err) {
     return NextResponse.json({ error: 'Server error' }, { status: 500 });

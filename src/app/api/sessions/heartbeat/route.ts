@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { readDB, writeDB } from '@/lib/db';
+import { connectDB } from '@/lib/mongoose';
+import { ActiveSession } from '@/lib/models';
 import { verifyToken } from '@/lib/auth';
 import { cookies } from 'next/headers';
 
@@ -17,18 +18,32 @@ export async function POST(req: Request) {
     // In a real Next.js app, IP can be extracted from req.headers.get('x-forwarded-for') or req.ip
     const ipAddress = req.headers.get('x-forwarded-for') || '127.0.0.1';
 
-    const db = await readDB();
+    await connectDB();
+    
+    // Check trial expiration
+    const { User, Profile, ActiveSession } = require('@/lib/models');
+    const user = await User.findOne({ id: payload.userId }).lean();
+    if (user && user.isTrial && user.trialExpiresAt) {
+      const expiresAt = new Date(user.trialExpiresAt);
+      if (expiresAt < new Date()) {
+        await User.deleteOne({ id: user.id });
+        await Profile.deleteMany({ userId: user.id });
+        await ActiveSession.deleteMany({ userId: user.id });
+        return NextResponse.json({ error: 'EXPIRED', message: 'Ücretsiz deneme süreniz dolmuştur, hesabınız silindi.' }, { status: 403 });
+      }
+    }
+
     const now = new Date();
     const fiveMinutesAgo = new Date(now.getTime() - 5 * 60000);
 
     // Clean up old sessions
-    db.activeSessions = db.activeSessions.filter(s => new Date(s.lastActive) > fiveMinutesAgo);
+    await ActiveSession.deleteMany({ lastActive: { $lt: fiveMinutesAgo.toISOString() } });
 
     // Get active sessions for this user
-    const userSessions = db.activeSessions.filter(s => s.userId === payload.userId);
+    const userSessions = await ActiveSession.find({ userId: payload.userId }).lean();
 
     // Count distinct IPs
-    const distinctIPs = new Set(userSessions.map(s => s.ipAddress));
+    const distinctIPs = new Set(userSessions.map((s: any) => s.ipAddress));
 
     // Determine limits
     let limit = 1;
@@ -44,20 +59,19 @@ export async function POST(req: Request) {
     }
 
     // Update or create session for this profile
-    const existingSessionIndex = db.activeSessions.findIndex(s => s.profileId === profileId);
-    if (existingSessionIndex > -1) {
-      db.activeSessions[existingSessionIndex].lastActive = now.toISOString();
-      db.activeSessions[existingSessionIndex].ipAddress = ipAddress;
+    const existingSession = await ActiveSession.findOne({ profileId });
+    if (existingSession) {
+      existingSession.lastActive = now.toISOString();
+      existingSession.ipAddress = ipAddress;
+      await existingSession.save();
     } else {
-      db.activeSessions.push({
+      await ActiveSession.create({
         userId: payload.userId as string,
         profileId,
         ipAddress,
         lastActive: now.toISOString(),
       });
     }
-
-    await writeDB(db);
 
     return NextResponse.json({ success: true });
   } catch (error) {

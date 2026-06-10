@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { 
   LogOut, Plus, Ban, CheckCircle, Copy, Trash, 
   LayoutDashboard, Users, Film, Tv, PlaySquare, 
-  MonitorPlay, ListVideo, MessageSquare, Settings, Menu, X, Search, Bell
+  MonitorPlay, ListVideo, MessageSquare, Settings, Menu, X, Search, Bell, Trophy, Upload, Ticket
 } from 'lucide-react';
 
 function CastEditor({ initialCast }: { initialCast?: any[] }) {
@@ -54,12 +54,18 @@ export default function AdminPanel() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('dashboard');
   const [isSidebarOpen, setSidebarOpen] = useState(false);
+  const [m3uText, setM3uText] = useState('');
+  const [m3uUrl, setM3uUrl] = useState('');
+  const [m3uType, setM3uType] = useState('movie');
+  const [m3uLoading, setM3uLoading] = useState(false);
   const [editMovie, setEditMovie] = useState<any>(null);
   const [editSeries, setEditSeries] = useState<any>(null);
   const [seriesSearch, setSeriesSearch] = useState('');
   const [selectedSeries, setSelectedSeries] = useState<any>(null);
   const [showSeriesResults, setShowSeriesResults] = useState(false);
   const [episodeSearchQuery, setEpisodeSearchQuery] = useState('');
+  const [editSportsChannel, setEditSportsChannel] = useState<any>(null);
+  const [editTvSchedule, setEditTvSchedule] = useState<any>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -87,19 +93,19 @@ export default function AdminPanel() {
       const json = await res.json();
       if (json.error) {
         alert('API Hatası: ' + json.error);
-        setData({ users: [], movies: [], series: [], episodes: [], channels: [], livePlaylists: [], comments: [] });
+        setData({ users: [], movies: [], series: [], episodes: [], channels: [], livePlaylists: [], comments: [], sportsChannels: [], coupons: [], tvSchedules: [] });
       } else {
         setData(json);
       }
     } catch (err) {
       console.error(err);
-      setData({ users: [], movies: [], series: [], episodes: [], channels: [], livePlaylists: [], comments: [] });
+      setData({ users: [], movies: [], series: [], episodes: [], channels: [], livePlaylists: [], comments: [], sportsChannels: [], coupons: [], tvSchedules: [] });
     } finally {
       setLoading(false);
     }
   };
 
-  const handleAction = async (action: string, payload: any) => {
+  const handleAction = async (action: string, payload: any, refresh: boolean = true) => {
     const res = await fetch('/api/admin', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -110,10 +116,107 @@ export default function AdminPanel() {
       if (result.user) {
         alert(`Kullanıcı oluşturuldu!\nUsername: ${result.user.username}\nPassword: ${result.user.password}`);
       }
-      fetchData();
+      if (refresh) fetchData();
     } else {
       alert('Hata: ' + result.error);
     }
+  };
+
+  const handleFetchM3uUrl = async () => {
+    if (!m3uUrl.trim()) return alert('Lütfen M3U linkini girin.');
+    const btnText = document.getElementById('fetchM3uBtn') as HTMLButtonElement;
+    if (btnText) btnText.innerText = 'Çekiliyor...';
+    try {
+      const res = await fetch('/api/admin/fetch-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: m3uUrl })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setM3uText(data.text);
+      } else {
+        alert('Hata: ' + data.error);
+      }
+    } catch(err) {
+      alert('İçerik çekilemedi. Bağlantıyı kontrol edin.');
+    }
+    if (btnText) btnText.innerText = "URL'den Çek";
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      if (ev.target?.result) {
+        setM3uText(ev.target.result as string);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const parseAndImportM3U = async () => {
+    if (!m3uText.trim()) return alert('Lütfen M3U içeriğini yapıştırın.');
+    setM3uLoading(true);
+    
+    const lines = m3uText.split('\n').map(l => l.trim()).filter(Boolean);
+    const items = [];
+    
+    let currentItem: any = {};
+    for (let line of lines) {
+      if (line.startsWith('#EXTINF')) {
+        const logoMatch = line.match(/tvg-logo="([^"]+)"/);
+        if (logoMatch) currentItem.bannerUrl = logoMatch[1];
+        const groupMatch = line.match(/group-title="([^"]+)"/);
+        if (groupMatch) currentItem.type = groupMatch[1];
+        const parts = line.split(',');
+        if (parts.length > 1) {
+          currentItem.title = parts[parts.length - 1].trim();
+        } else {
+          currentItem.title = 'Bilinmeyen Başlık';
+        }
+      } else if (!line.startsWith('#')) {
+        currentItem.videoUrl = line;
+        if (currentItem.videoUrl && currentItem.title) {
+          items.push({ ...currentItem });
+        }
+        currentItem = {};
+      }
+    }
+
+    if (items.length === 0) {
+      alert('Geçerli bir içerik bulunamadı.');
+      setM3uLoading(false);
+      return;
+    }
+
+    if (!confirm(`Toplam ${items.length} adet içerik bulundu. İçe aktarmayı onaylıyor musunuz?`)) {
+      setM3uLoading(false);
+      return;
+    }
+
+    let successCount = 0;
+    for (let item of items) {
+      try {
+        const payload = {
+          title: item.title,
+          type: item.type || 'Aksiyon',
+          bannerUrl: item.bannerUrl || '',
+          videoUrl: item.videoUrl,
+          story: 'M3U ile toplu eklendi.',
+        };
+        await handleAction(m3uType === 'movie' ? 'addMovie' : 'addSeries', payload, false);
+        successCount++;
+      } catch (e) {
+        console.error('Import error for', item.title);
+      }
+    }
+
+    alert(`${successCount}/${items.length} içerik başarıyla eklendi!`);
+    setM3uText('');
+    setM3uLoading(false);
+    fetchData();
   };
 
   const NAV_ITEMS = [
@@ -122,8 +225,10 @@ export default function AdminPanel() {
     { id: 'movies', label: 'Filmler', icon: Film },
     { id: 'series', label: 'Diziler', icon: Tv },
     { id: 'episodes', label: 'Bölümler', icon: PlaySquare },
-    { id: 'channels', label: 'Canlı Kanallar', icon: MonitorPlay },
-    { id: 'playlists', label: 'Toplu Ekleme', icon: ListVideo },
+    { id: 'bulk-m3u', label: 'Toplu M3U Aktar', icon: Upload },
+    { id: 'bsplus-tv', label: 'BS+ TV Yönetimi', icon: MonitorPlay },
+    { id: 'sports', label: 'Spor Kanalları', icon: Trophy },
+    { id: 'coupons', label: 'Kupon Yönetimi', icon: Ticket },
     { id: 'comments', label: 'Yorum Yönetimi', icon: MessageSquare },
     { id: 'notifications', label: 'Bildirim Merkezi', icon: Bell },
     { id: 'system', label: 'Sistem Ayarları', icon: Settings },
@@ -214,7 +319,7 @@ export default function AdminPanel() {
                 { title: 'Toplam Kullanıcı', value: data.users?.length || 0, icon: Users, color: '#9155fd' },
                 { title: 'Toplam Film', value: data.movies?.length || 0, icon: Film, color: '#56ca00' },
                 { title: 'Toplam Dizi', value: data.series?.length || 0, icon: Tv, color: '#ffb400' },
-                { title: 'Canlı Kanal', value: data.channels?.length || 0, icon: MonitorPlay, color: '#ff4c51' },
+                { title: 'BS+ TV', value: data.bsplusTv?.streamUrl ? 'Aktif' : 'Pasif', icon: MonitorPlay, color: '#ff4c51' },
               ].map((stat, idx) => (
                 <div key={idx} className="bg-[#312d4b] p-6 rounded-xl shadow-[0_4px_8px_rgba(0,0,0,0.2)] flex items-center justify-between">
                   <div>
@@ -350,7 +455,28 @@ export default function AdminPanel() {
                   <div className="md:col-span-2">
                     <textarea name="story" defaultValue={editMovie?.story} placeholder="Hikayesi" required className="bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] text-white px-4 py-3 rounded-lg outline-none focus:border-[#9155fd] w-full min-h-[100px]" />
                   </div>
-                  <input name="bannerUrl" defaultValue={editMovie?.bannerUrl} placeholder="Kapak Resmi URL" required className="bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] text-white px-4 py-3 rounded-lg outline-none focus:border-[#9155fd] w-full" />
+                  <div className="md:col-span-2 flex gap-4">
+                    <input id="movieBannerUrl" name="bannerUrl" defaultValue={editMovie?.bannerUrl} placeholder="Kapak Resmi URL" required className="flex-1 bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] text-white px-4 py-3 rounded-lg outline-none focus:border-[#9155fd]" />
+                    <button type="button" onClick={async (e) => {
+                      const title = (e.currentTarget.form as HTMLFormElement).title.value;
+                      if (!title) return alert('Lütfen önce Film İsmi girin.');
+                      const btn = e.currentTarget;
+                      const origText = btn.textContent;
+                      btn.textContent = 'Aranıyor...';
+                      try {
+                        const res = await fetch(`/api/admin/fetch-banner?title=${encodeURIComponent(title)}&type=movie`);
+                        const data = await res.json();
+                        if (data.url) {
+                          (document.getElementById('movieBannerUrl') as HTMLInputElement).value = data.url;
+                        } else {
+                          alert('Afiş bulunamadı.');
+                        }
+                      } catch(err) {
+                        alert('Hata oluştu.');
+                      }
+                      btn.textContent = origText;
+                    }} className="bg-[#ff4c51] text-white px-6 py-3 rounded-lg font-medium hover:bg-[#e04044] transition-colors whitespace-nowrap">Otomatik Bul</button>
+                  </div>
                   
                   <CastEditor initialCast={editMovie?.cast} />
                   <div className="md:col-span-2 flex flex-col md:flex-row gap-4">
@@ -500,6 +626,58 @@ export default function AdminPanel() {
             </div>
           )}
 
+          {/* SPORTS TAB */}
+          {tab === 'sports' && (
+            <div className="flex flex-col gap-6">
+              <div className="bg-[#312d4b] p-6 rounded-xl shadow-[0_4px_8px_rgba(0,0,0,0.2)]">
+                <h2 className="text-xl font-bold mb-6">{editSportsChannel ? 'Spor Kanalını Düzenle' : 'Yeni Spor Kanalı Ekle'}</h2>
+                <form className="grid grid-cols-1 md:grid-cols-2 gap-6" onSubmit={(e) => {
+                  e.preventDefault();
+                  const fd = new FormData(e.currentTarget);
+                  const payload = Object.fromEntries(fd);
+                  if (editSportsChannel) { 
+                    handleAction('editSportsChannel', { id: editSportsChannel.id, ...payload }); 
+                    setEditSportsChannel(null); 
+                  } else { 
+                    handleAction('addSportsChannel', payload); 
+                  }
+                  (e.target as HTMLFormElement).reset();
+                }}>
+                  <input name="name" defaultValue={editSportsChannel?.name} placeholder="Kanal İsmi" required className="bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] text-white px-4 py-3 rounded-lg outline-none focus:border-[#9155fd] w-full" />
+                  <input name="logoUrl" defaultValue={editSportsChannel?.logoUrl} placeholder="Kanal Logosu URL" required className="bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] text-white px-4 py-3 rounded-lg outline-none focus:border-[#9155fd] w-full" />
+                  <div className="md:col-span-2">
+                    <input name="streamUrl" defaultValue={editSportsChannel?.streamUrl} placeholder="M3U8 Yayın URL" required className="bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] text-white px-4 py-3 rounded-lg outline-none focus:border-[#9155fd] w-full" />
+                  </div>
+                  <div className="md:col-span-2 flex justify-end gap-4">
+                    {editSportsChannel && <button type="button" onClick={() => setEditSportsChannel(null)} className="px-6 py-2 rounded-lg text-[rgba(255,255,255,0.6)] hover:bg-[rgba(255,255,255,0.04)] transition-colors">İptal</button>}
+                    <button type="submit" className="bg-[#9155fd] text-white px-8 py-2.5 rounded-lg font-medium hover:bg-[#804bdf] transition-colors shadow-lg shadow-[#9155fd]/30">{editSportsChannel ? 'Güncelle' : 'Ekle'}</button>
+                  </div>
+                </form>
+              </div>
+
+              <div className="bg-[#312d4b] rounded-xl shadow-[0_4px_8px_rgba(0,0,0,0.2)] p-6">
+                <h3 className="text-lg font-bold mb-4">Mevcut Spor Kanalları</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {data.sportsChannels?.map((ch: any) => (
+                    <div key={ch.id} className="flex items-center gap-4 bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.06)] p-3 rounded-lg hover:bg-[rgba(255,255,255,0.04)] transition-colors">
+                      <img src={ch.logoUrl} alt={ch.name} className="w-12 h-12 object-contain rounded bg-black p-1 shadow-md" />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium truncate">{ch.name}</div>
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <button onClick={() => setEditSportsChannel(ch)} className="text-[rgba(255,255,255,0.6)] hover:text-[#9155fd]"><Settings className="w-4 h-4"/></button>
+                        <button onClick={() => { if(confirm('Silinsin mi?')) handleAction('deleteSportsChannel', { id: ch.id }) }} className="text-[rgba(255,255,255,0.6)] hover:text-[#ff4c51]"><Trash className="w-4 h-4"/></button>
+                      </div>
+                    </div>
+                  ))}
+                  {(!data.sportsChannels || data.sportsChannels.length === 0) && (
+                    <div className="text-[rgba(255,255,255,0.4)] text-sm col-span-full py-4 text-center">Henüz spor kanalı eklenmemiş.</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Comments Tab */}
           {tab === 'comments' && (
             <div className="bg-[#312d4b] rounded-xl shadow-[0_4px_8px_rgba(0,0,0,0.2)] overflow-hidden">
@@ -562,7 +740,28 @@ export default function AdminPanel() {
                     <input name="director" defaultValue={editSeries?.director} placeholder="Yönetmen" className="flex-1 bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] text-white px-4 py-3 rounded-lg outline-none focus:border-[#9155fd]" />
                   </div>
                   <textarea name="story" defaultValue={editSeries?.story} placeholder="Hikayesi" required className="bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] text-white px-4 py-3 rounded-lg outline-none focus:border-[#9155fd] w-full min-h-[100px]" />
-                  <input name="bannerUrl" defaultValue={editSeries?.bannerUrl} placeholder="Kapak Resmi URL" required className="bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] text-white px-4 py-3 rounded-lg outline-none focus:border-[#9155fd] w-full" />
+                  <div className="flex gap-4 w-full">
+                    <input id="seriesBannerUrl" name="bannerUrl" defaultValue={editSeries?.bannerUrl} placeholder="Kapak Resmi URL" required className="flex-1 bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] text-white px-4 py-3 rounded-lg outline-none focus:border-[#9155fd]" />
+                    <button type="button" onClick={async (e) => {
+                      const title = (e.currentTarget.form as HTMLFormElement).title.value;
+                      if (!title) return alert('Lütfen önce Dizi İsmi girin.');
+                      const btn = e.currentTarget;
+                      const origText = btn.textContent;
+                      btn.textContent = 'Aranıyor...';
+                      try {
+                        const res = await fetch(`/api/admin/fetch-banner?title=${encodeURIComponent(title)}&type=series`);
+                        const data = await res.json();
+                        if (data.url) {
+                          (document.getElementById('seriesBannerUrl') as HTMLInputElement).value = data.url;
+                        } else {
+                          alert('Afiş bulunamadı.');
+                        }
+                      } catch(err) {
+                        alert('Hata oluştu.');
+                      }
+                      btn.textContent = origText;
+                    }} className="bg-[#ff4c51] text-white px-6 py-3 rounded-lg font-medium hover:bg-[#e04044] transition-colors whitespace-nowrap">Otomatik Bul</button>
+                  </div>
                   <CastEditor initialCast={editSeries?.cast} />
                   <div className="flex justify-end gap-4 mt-2">
                     {editSeries && <button type="button" onClick={() => setEditSeries(null)} className="px-6 py-2 rounded-lg text-[rgba(255,255,255,0.6)] hover:bg-[rgba(255,255,255,0.04)] transition-colors">İptal</button>}
@@ -583,6 +782,198 @@ export default function AdminPanel() {
                       </div>
                     </div>
                   ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* BULK M3U TAB */}
+          {tab === 'coupons' && (
+            <div className="space-y-6">
+              <h2 className="text-2xl font-bold">Kupon Yönetimi</h2>
+              <div className="bg-[#312d4b] rounded-xl p-6 shadow-lg border border-[rgba(255,255,255,0.12)]">
+                <h3 className="text-xl font-semibold mb-4">Yeni Kupon Oluştur</h3>
+                <form 
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    const form = e.target as HTMLFormElement;
+                    const code = (form.elements.namedItem('code') as HTMLInputElement).value;
+                    const durationDays = (form.elements.namedItem('durationDays') as HTMLInputElement).value;
+                    const maxUses = (form.elements.namedItem('maxUses') as HTMLInputElement).value;
+                    const pkg = (form.elements.namedItem('package') as HTMLSelectElement).value;
+
+                    const res = await fetch('/api/admin/coupons', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ code, durationDays, maxUses, package: pkg })
+                    });
+                    const resJson = await res.json();
+                    if (resJson.error) {
+                      alert(resJson.error);
+                    } else {
+                      alert('Kupon oluşturuldu!');
+                      form.reset();
+                      fetchData();
+                    }
+                  }}
+                  className="space-y-4"
+                >
+                  <div className="grid md:grid-cols-4 gap-4">
+                    <input name="code" placeholder="Kupon Kodu (Örn: HOŞGELDİN50)" required className="bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] text-white px-4 py-2 rounded-lg outline-none focus:border-[#9155fd]" />
+                    <input name="durationDays" type="number" placeholder="Süre (Gün)" required className="bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] text-white px-4 py-2 rounded-lg outline-none focus:border-[#9155fd]" />
+                    <input name="maxUses" type="number" placeholder="Kullanım Limiti" required defaultValue={1} className="bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] text-white px-4 py-2 rounded-lg outline-none focus:border-[#9155fd]" />
+                    <select name="package" required className="bg-[#312d4b] border border-[rgba(255,255,255,0.12)] text-white px-4 py-2 rounded-lg outline-none focus:border-[#9155fd]">
+                      <option value="Diamond">Diamond</option>
+                      <option value="Gold">Gold</option>
+                      <option value="Iron">Iron</option>
+                    </select>
+                  </div>
+                  <button type="submit" className="w-full bg-[#9155fd] text-white py-3 rounded-lg font-bold hover:bg-[#a674ff] transition-colors shadow-lg shadow-[#9155fd]/30 flex justify-center items-center gap-2">
+                    <Plus className="w-5 h-5" /> Oluştur
+                  </button>
+                </form>
+              </div>
+
+              <div className="bg-[#312d4b] rounded-xl shadow-lg border border-[rgba(255,255,255,0.12)] overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-[rgba(255,255,255,0.04)] border-b border-[rgba(255,255,255,0.12)]">
+                        <th className="px-6 py-4 text-xs font-semibold text-[rgba(255,255,255,0.68)] uppercase">Kupon Kodu</th>
+                        <th className="px-6 py-4 text-xs font-semibold text-[rgba(255,255,255,0.68)] uppercase">Süre (Gün)</th>
+                        <th className="px-6 py-4 text-xs font-semibold text-[rgba(255,255,255,0.68)] uppercase">Paket</th>
+                        <th className="px-6 py-4 text-xs font-semibold text-[rgba(255,255,255,0.68)] uppercase">Kullanım</th>
+                        <th className="px-6 py-4 text-xs font-semibold text-[rgba(255,255,255,0.68)] uppercase">İşlem</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[rgba(255,255,255,0.12)]">
+                      {data.coupons?.map((c: any) => (
+                        <tr key={c.id} className="hover:bg-[rgba(255,255,255,0.02)] transition-colors">
+                          <td className="px-6 py-4 font-bold text-white tracking-wider">{c.code}</td>
+                          <td className="px-6 py-4 text-gray-300">{c.durationDays} Gün</td>
+                          <td className="px-6 py-4">
+                            <span className={`px-3 py-1 rounded-full text-xs font-medium ${c.package === 'Diamond' ? 'bg-[#9155fd]/20 text-[#9155fd]' : c.package === 'Gold' ? 'bg-[#ffb400]/20 text-[#ffb400]' : 'bg-[rgba(255,255,255,0.12)] text-gray-300'}`}>
+                              {c.package}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-gray-300">{c.currentUses} / {c.maxUses}</td>
+                          <td className="px-6 py-4">
+                            <button 
+                              onClick={async () => {
+                                if (confirm('Bu kuponu silmek istediğine emin misin?')) {
+                                  await fetch('/api/admin/coupons?id=' + c.id, { method: 'DELETE' });
+                                  fetchData();
+                                }
+                              }}
+                              className="text-red-500 hover:text-red-400 p-2 rounded-lg hover:bg-red-500/10 transition-colors"
+                            >
+                              <Trash className="w-5 h-5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                      {(!data.coupons || data.coupons.length === 0) && (
+                        <tr><td colSpan={5} className="px-6 py-8 text-center text-gray-400">Henüz hiç kupon oluşturulmamış.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {tab === 'bulk-m3u' && (
+            <div className="flex flex-col gap-6">
+              <div className="bg-[#312d4b] p-6 rounded-xl shadow-[0_4px_8px_rgba(0,0,0,0.2)]">
+                <h2 className="text-xl font-bold mb-6">Toplu M3U İçe Aktar</h2>
+                <div className="text-sm text-[rgba(255,255,255,0.6)] mb-6">
+                  M3U dosyanızın içeriğini aşağıdaki kutuya yapıştırın. Sistem <code className="bg-black/30 px-1 py-0.5 rounded">#EXTINF</code> satırlarından başlık, afiş (<code className="bg-black/30 px-1 py-0.5 rounded">tvg-logo</code>) ve tür (<code className="bg-black/30 px-1 py-0.5 rounded">group-title</code>) bilgilerini; bir sonraki satırdan ise video/yayın linkini otomatik olarak çekecektir.
+                </div>
+                
+                <div className="flex gap-4 mb-4">
+                  <button 
+                    onClick={() => setM3uType('movie')}
+                    className={`flex-1 py-3 rounded-lg font-bold transition-all ${m3uType === 'movie' ? 'bg-[#9155fd] text-white shadow-lg shadow-[#9155fd]/30' : 'bg-[rgba(255,255,255,0.04)] text-[rgba(255,255,255,0.6)] hover:bg-[rgba(255,255,255,0.08)]'}`}
+                  >
+                    Filmlere Ekle
+                  </button>
+                  <button 
+                    onClick={() => setM3uType('series')}
+                    className={`flex-1 py-3 rounded-lg font-bold transition-all ${m3uType === 'series' ? 'bg-[#9155fd] text-white shadow-lg shadow-[#9155fd]/30' : 'bg-[rgba(255,255,255,0.04)] text-[rgba(255,255,255,0.6)] hover:bg-[rgba(255,255,255,0.08)]'}`}
+                  >
+                    Dizilere Ekle
+                  </button>
+                </div>
+
+                <div className="flex flex-col md:flex-row gap-4 mb-4">
+                  <div className="flex-1 flex gap-2">
+                    <input 
+                      type="text" 
+                      value={m3uUrl} 
+                      onChange={e => setM3uUrl(e.target.value)} 
+                      placeholder="http://ornek.com/liste.m3u" 
+                      className="flex-1 bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] text-white px-4 py-3 rounded-lg outline-none focus:border-[#9155fd] text-sm" 
+                    />
+                    <button 
+                      id="fetchM3uBtn"
+                      onClick={handleFetchM3uUrl} 
+                      className="bg-[#9155fd] text-white px-6 py-3 rounded-lg font-medium hover:bg-[#804bdf] transition-colors whitespace-nowrap text-sm"
+                    >
+                      URL'den Çek
+                    </button>
+                  </div>
+                  <div className="flex-1 flex items-center justify-between bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] rounded-lg px-4 py-2">
+                    <span className="text-sm text-[rgba(255,255,255,0.6)]">Veya bilgisayardan .m3u seçin:</span>
+                    <input 
+                      type="file" 
+                      accept=".m3u,.m3u8,.txt"
+                      onChange={handleFileUpload}
+                      className="text-sm text-[rgba(255,255,255,0.6)] file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-[#9155fd]/20 file:text-[#9155fd] hover:file:bg-[#9155fd]/30 cursor-pointer"
+                    />
+                  </div>
+                </div>
+
+                <textarea
+                  value={m3uText}
+                  onChange={e => setM3uText(e.target.value)}
+                  placeholder="#EXTM3U&#10;#EXTINF:-1 tvg-logo=&#34;https://resim.jpg&#34; group-title=&#34;Aksiyon&#34;, Film Adı&#10;http://video.m3u8"
+                  className="w-full h-64 bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] text-white px-4 py-3 rounded-lg outline-none focus:border-[#9155fd] font-mono text-sm mb-4"
+                />
+
+                <button 
+                  onClick={parseAndImportM3U} 
+                  disabled={m3uLoading}
+                  className="w-full bg-[#56ca00] text-white px-8 py-4 rounded-lg font-bold hover:bg-[#4eb700] transition-colors shadow-lg shadow-[#56ca00]/30 disabled:opacity-50 disabled:cursor-not-allowed mb-8"
+                >
+                  {m3uLoading ? 'İçe Aktarılıyor... Lütfen bekleyin.' : 'M3U İçeriğini Tara ve Ekle'}
+                </button>
+
+                <div className="pt-6 border-t border-[rgba(255,255,255,0.12)]">
+                  <h3 className="text-lg font-bold mb-4 text-[#ff4c51]">Tehlikeli İşlemler</h3>
+                  <div className="flex flex-col sm:flex-row gap-4">
+                    <button 
+                      onClick={async () => {
+                        if (confirm('Toplu M3U aktarma aracı ile eklenen TÜM FİLMLER silinecek. Onaylıyor musunuz?')) {
+                          await handleAction('deleteBulkM3uMovies', {});
+                          alert('M3U ile eklenen tüm filmler silindi.');
+                        }
+                      }}
+                      className="flex-1 bg-[rgba(255,76,81,0.1)] text-[#ff4c51] border border-[#ff4c51] px-4 py-3 rounded-lg font-medium hover:bg-[#ff4c51] hover:text-white transition-colors"
+                    >
+                      Eklenmiş M3U Filmlerini Sil
+                    </button>
+                    <button 
+                      onClick={async () => {
+                        if (confirm('Toplu M3U aktarma aracı ile eklenen TÜM DİZİLER silinecek. Onaylıyor musunuz?')) {
+                          await handleAction('deleteBulkM3uSeries', {});
+                          alert('M3U ile eklenen tüm diziler silindi.');
+                        }
+                      }}
+                      className="flex-1 bg-[rgba(255,76,81,0.1)] text-[#ff4c51] border border-[#ff4c51] px-4 py-3 rounded-lg font-medium hover:bg-[#ff4c51] hover:text-white transition-colors"
+                    >
+                      Eklenmiş M3U Dizilerini Sil
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -745,147 +1136,108 @@ export default function AdminPanel() {
             </div>
           )}
 
-          {/* CHANNELS TAB */}
-          {tab === 'channels' && (
+          {/* BS+ TV TAB */}
+          {tab === 'bsplus-tv' && (
             <div className="flex flex-col gap-6">
               <div className="bg-[#312d4b] p-6 rounded-xl shadow-[0_4px_8px_rgba(0,0,0,0.2)]">
-                <h2 className="text-xl font-bold mb-6">Canlı Kanal Ekle</h2>
-                <form className="grid grid-cols-1 md:grid-cols-2 gap-6" onSubmit={(e) => {
+                <h2 className="text-xl font-bold mb-6">BS+ TV Manuel Yayın Yönetimi (Eski Sistem)</h2>
+                <form className="grid grid-cols-1 gap-6" onSubmit={(e) => {
                   e.preventDefault(); const fd = new FormData(e.currentTarget);
-                  handleAction('addChannel', Object.fromEntries(fd)); e.currentTarget.reset();
+                  handleAction('updateBsPlusTv', Object.fromEntries(fd));
                 }}>
-                  <input name="name" placeholder="Kanal İsmi" required className="bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] text-white px-4 py-3 rounded-lg outline-none focus:border-[#9155fd] w-full" />
-                  <input name="logoUrl" placeholder="Logo URL (Opsiyonel)" className="bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] text-white px-4 py-3 rounded-lg outline-none focus:border-[#9155fd] w-full" />
-                  <input name="streamUrl" placeholder="Yayın URL (m3u8)" required className="bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] text-white px-4 py-3 rounded-lg outline-none focus:border-[#9155fd] w-full md:col-span-2" />
-                  <div className="md:col-span-2 flex justify-end">
-                    <button type="submit" className="bg-[#9155fd] text-white px-8 py-2.5 rounded-lg font-medium hover:bg-[#804bdf] transition-colors shadow-lg shadow-[#9155fd]/30">Kanalı Ekle</button>
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm text-[rgba(255,255,255,0.6)]">Şu An Oynatılan Program (Ekranda görünecek yazı)</label>
+                    <input name="currentProgram" defaultValue={data.bsplusTv?.currentProgram} placeholder="Örn: Şu an Oynatılıyor: Hızlı ve Öfkeli 9" required className="bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] text-white px-4 py-3 rounded-lg outline-none focus:border-[#9155fd] w-full" />
                   </div>
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm text-[rgba(255,255,255,0.6)]">Yayın M3U8 Linki</label>
+                    <input name="streamUrl" defaultValue={data.bsplusTv?.streamUrl} placeholder="Yayın URL (m3u8)" required className="bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] text-white px-4 py-3 rounded-lg outline-none focus:border-[#9155fd] w-full" />
+                  </div>
+                  <div className="flex justify-end mt-4">
+                    <button type="submit" className="bg-[#9155fd] text-white px-8 py-2.5 rounded-lg font-medium hover:bg-[#804bdf] transition-colors shadow-lg shadow-[#9155fd]/30">Manuel Yayını Güncelle</button>
+                  </div>
+                  <p className="text-xs text-zinc-400 mt-2">Not: Eğer aşağıdaki haftalık yayın akışında o anki saate uyan bir program yoksa, otomatik olarak buradaki yayın devreye girer.</p>
                 </form>
               </div>
-              <div className="bg-[#312d4b] rounded-xl shadow-[0_4px_8px_rgba(0,0,0,0.2)] p-6">
-                <h3 className="text-lg font-bold mb-4">Kanallar</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {data.channels?.map((c: any) => (
-                    <div key={c.id} className="flex items-center gap-4 bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.06)] p-4 rounded-lg hover:bg-[rgba(255,255,255,0.04)] transition-colors">
-                      {c.logoUrl && <img src={c.logoUrl} alt="Logo" className="w-10 h-10 object-contain rounded" />}
-                      <span className="flex-1 font-medium truncate">{c.name}</span>
-                      <button onClick={() => { if(confirm('Emin misiniz?')) handleAction('deleteChannel', { id: c.id }) }} className="text-[rgba(255,255,255,0.6)] hover:text-[#ff4c51]"><Trash className="w-4 h-4"/></button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
 
-          {/* PLAYLISTS TAB */}
-          {tab === 'playlists' && (
-            <div className="flex flex-col gap-6">
-              <div className="bg-[#312d4b] p-6 rounded-xl shadow-[0_4px_8px_rgba(0,0,0,0.2)] border border-[#ffb400]/20">
-                <h2 className="text-xl font-bold mb-2 text-[#ffb400]">Canlı TV Playlist URL Entegrasyonu</h2>
-                <p className="text-[rgba(255,255,255,0.6)] mb-6 text-sm">Sisteme M3U linki ekleyin. Kanallar otomatik senkronize olur.</p>
-                <form className="flex gap-4 items-end" onSubmit={(e) => {
-                  e.preventDefault(); handleAction('addLivePlaylist', Object.fromEntries(new FormData(e.currentTarget))); e.currentTarget.reset();
+              <div className="bg-[#312d4b] p-6 rounded-xl shadow-[0_4px_8px_rgba(0,0,0,0.2)]">
+                <h2 className="text-xl font-bold mb-6">{editTvSchedule ? 'Yayın Akışını Düzenle' : 'Haftalık Yayın Akışına Yeni Program Ekle'}</h2>
+                <form className="grid grid-cols-1 md:grid-cols-2 gap-6" onSubmit={(e) => {
+                  e.preventDefault();
+                  const fd = new FormData(e.currentTarget);
+                  const payload = Object.fromEntries(fd);
+                  if (editTvSchedule) {
+                    handleAction('editTvSchedule', { id: editTvSchedule.id, ...payload });
+                    setEditTvSchedule(null);
+                  } else {
+                    handleAction('addTvSchedule', payload);
+                  }
+                  (e.target as HTMLFormElement).reset();
                 }}>
-                  <div className="flex-1">
-                    <input name="name" placeholder="Playlist İsmi" required className="bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] text-white px-4 py-3 rounded-lg outline-none focus:border-[#ffb400] w-full mb-4" />
-                    <input name="url" placeholder="M3U veya M3U8 URL'si" required className="bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] text-white px-4 py-3 rounded-lg outline-none focus:border-[#ffb400] w-full" />
-                  </div>
-                  <button type="submit" className="bg-[#ffb400] text-black px-6 py-3 rounded-lg font-bold hover:bg-[#e5a200] transition-colors shadow-lg shadow-[#ffb400]/30 h-fit mb-1">Ekle</button>
-                </form>
-                <ul className="mt-6 divide-y divide-[rgba(255,255,255,0.06)]">
-                  {data.livePlaylists?.map((p: any) => (
-                    <li key={p.id} className="py-4 flex justify-between items-center">
-                      <div><div className="font-bold">{p.name}</div><div className="text-sm text-[#ffb400]">{p.url}</div></div>
-                      <button onClick={() => { if(confirm('Silinsin mi?')) handleAction('deleteLivePlaylist', { id: p.id }) }} className="text-[#ff4c51] hover:text-[#e04347]"><Trash className="w-5 h-5"/></button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              <div className="bg-[#312d4b] p-6 rounded-xl shadow-[0_4px_8px_rgba(0,0,0,0.2)] border border-[#56ca00]/20">
-                <h2 className="text-xl font-bold mb-2 text-[#56ca00]">Film / Dizi Toplu Ekleme (M3U)</h2>
-                <p className="text-[rgba(255,255,255,0.6)] mb-6 text-sm">Bir .m3u dosyası yükleyerek yüzlerce içeriği saniyeler içinde kalıcı olarak veritabanınıza ekleyebilirsiniz.</p>
-                <form className="flex flex-col gap-4" onSubmit={async (e) => {
-                  e.preventDefault(); 
-                  const form = e.currentTarget;
-                  const fileInput = form.querySelector('input[type="file"]') as HTMLInputElement;
-                  const categorySelect = form.querySelector('select[name="category"]') as HTMLSelectElement;
-                  
-                  if (!fileInput.files || fileInput.files.length === 0) return;
-                  const file = fileInput.files[0];
-                  const category = categorySelect.value;
-                  
-                  const reader = new FileReader();
-                  reader.onload = async (event) => {
-                    const text = event.target?.result as string;
-                    const lines = text.split(/\r?\n/);
-                    
-                    let parsedItems = [];
-                    let currentTitle = '';
-                    let currentBanner = '';
-                    let currentCategory = '';
-                    
-                    for (const line of lines) {
-                      const l = line.trim();
-                      if (!l) continue;
-                      
-                      if (l.startsWith('#EXTINF:')) {
-                        const commaIdx = l.lastIndexOf(',');
-                        currentTitle = commaIdx > -1 ? l.substring(commaIdx + 1).trim() : 'İsimsiz İçerik';
-                        const logoMatch = l.match(/tvg-logo="([^"]+)"/);
-                        currentBanner = logoMatch ? logoMatch[1] : 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?auto=format&fit=crop&q=80';
-                        const groupMatch = l.match(/group-title="([^"]+)"/);
-                        currentCategory = groupMatch ? groupMatch[1].trim() : '';
-                      } 
-                      else if (!l.startsWith('#')) {
-                        parsedItems.push({
-                          title: currentTitle,
-                          bannerUrl: currentBanner,
-                          category: currentCategory,
-                          videoUrl: l
-                        });
-                        currentTitle = ''; currentBanner = ''; currentCategory = '';
-                      }
-                    }
-                    
-                    if (parsedItems.length === 0) return alert('Dosyada geçerli link bulunamadı.');
-                    
-                    // Chunk and send
-                    const chunkSize = 500;
-                    let successCount = 0;
-                    
-                    for (let i = 0; i < parsedItems.length; i += chunkSize) {
-                      const chunk = parsedItems.slice(i, i + chunkSize);
-                      try {
-                        const res = await fetch('/api/admin/playlist-chunk', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ category, items: chunk })
-                        });
-                        if (res.ok) successCount += chunk.length;
-                      } catch (err) {
-                        console.error(err);
-                      }
-                    }
-                    
-                    alert(`Toplam ${successCount} içerik başarıyla aktarıldı!`);
-                    fetchData();
-                    form.reset();
-                  };
-                  reader.readAsText(file);
-                }}>
-                  <select name="category" required className="bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] text-white px-4 py-3 rounded-lg outline-none focus:border-[#56ca00] w-full">
-                    <option value="auto">Otomatik Algıla (Akıllı Tarama)</option>
-                    <option value="movie">Sadece Filmler Olarak Ekle</option>
-                    <option value="series">Sadece Diziler Olarak Ekle</option>
+                  <select name="dayOfWeek" defaultValue={editTvSchedule?.dayOfWeek ?? 1} className="bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] text-white px-4 py-3 rounded-lg outline-none focus:border-[#9155fd] w-full">
+                    <option value={1} className="bg-[#312d4b]">Pazartesi</option>
+                    <option value={2} className="bg-[#312d4b]">Salı</option>
+                    <option value={3} className="bg-[#312d4b]">Çarşamba</option>
+                    <option value={4} className="bg-[#312d4b]">Perşembe</option>
+                    <option value={5} className="bg-[#312d4b]">Cuma</option>
+                    <option value={6} className="bg-[#312d4b]">Cumartesi</option>
+                    <option value={0} className="bg-[#312d4b]">Pazar</option>
                   </select>
-                  <input type="file" name="file" accept=".m3u,.m3u8" required className="bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] text-white px-4 py-3 rounded-lg w-full file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-[#56ca00]/20 file:text-[#56ca00]" />
-                  <button type="submit" className="bg-[#56ca00] text-white px-6 py-3 rounded-lg font-bold hover:bg-[#4eb700] transition-colors shadow-lg shadow-[#56ca00]/30 mt-2">İçe Aktar</button>
+                  <input name="title" defaultValue={editTvSchedule?.title} placeholder="Program / Film Adı" required className="bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] text-white px-4 py-3 rounded-lg outline-none focus:border-[#9155fd] w-full" />
+                  
+                  <div className="flex gap-4">
+                    <div className="flex-1">
+                      <label className="text-xs text-[rgba(255,255,255,0.6)] mb-1 block">Başlangıç Saati</label>
+                      <input type="time" name="startTime" defaultValue={editTvSchedule?.startTime} required className="bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] text-white px-4 py-3 rounded-lg outline-none focus:border-[#9155fd] w-full" />
+                    </div>
+                    <div className="flex-1">
+                      <label className="text-xs text-[rgba(255,255,255,0.6)] mb-1 block">Bitiş Saati</label>
+                      <input type="time" name="endTime" defaultValue={editTvSchedule?.endTime} required className="bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] text-white px-4 py-3 rounded-lg outline-none focus:border-[#9155fd] w-full" />
+                    </div>
+                  </div>
+                  
+                  <input name="streamUrl" defaultValue={editTvSchedule?.streamUrl} placeholder="M3U8 Yayın Linki" required className="bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] text-white px-4 py-3 rounded-lg outline-none focus:border-[#9155fd] w-full" />
+                  
+                  <div className="md:col-span-2 flex justify-end gap-4 mt-2">
+                    {editTvSchedule && <button type="button" onClick={() => setEditTvSchedule(null)} className="px-6 py-2 rounded-lg text-[rgba(255,255,255,0.6)] hover:bg-[rgba(255,255,255,0.04)] transition-colors">İptal</button>}
+                    <button type="submit" className="bg-[#9155fd] text-white px-8 py-2.5 rounded-lg font-medium hover:bg-[#804bdf] transition-colors shadow-lg shadow-[#9155fd]/30">
+                      {editTvSchedule ? 'Güncelle' : 'Ekle'}
+                    </button>
+                  </div>
                 </form>
-                <div className="mt-6 pt-6 border-t border-[rgba(255,255,255,0.1)]">
-                  <button onClick={() => { if(confirm('M3U ile eklenmiş tüm film ve diziler silinecek. Emin misiniz?')) handleAction('bulkDeleteM3U', {}) }} className="bg-[#ff4c51] text-white px-6 py-3 rounded-lg font-bold hover:bg-[#e04347] transition-colors shadow-lg shadow-[#ff4c51]/30 w-full flex items-center justify-center gap-2">
-                    <Trash className="w-5 h-5" /> Toplu Eklenenleri Temizle
-                  </button>
+              </div>
+
+              <div className="bg-[#312d4b] rounded-xl shadow-[0_4px_8px_rgba(0,0,0,0.2)] p-6">
+                <h3 className="text-lg font-bold mb-4">Haftalık Yayın Akışı</h3>
+                <div className="flex flex-col gap-6">
+                  {['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'].map((dayName, idx) => {
+                    const dayNum = idx === 6 ? 0 : idx + 1; // 1-6 for Mon-Sat, 0 for Sun
+                    const daySchedules = data.tvSchedules?.filter((s:any) => s.dayOfWeek === dayNum).sort((a:any, b:any) => a.startTime.localeCompare(b.startTime)) || [];
+                    if (daySchedules.length === 0) return null;
+                    
+                    return (
+                      <div key={dayNum} className="border border-[rgba(255,255,255,0.1)] rounded-lg p-4 bg-[rgba(0,0,0,0.1)]">
+                        <h4 className="font-bold text-[#9155fd] mb-3">{dayName}</h4>
+                        <div className="flex flex-col gap-2">
+                          {daySchedules.map((s:any) => (
+                            <div key={s.id} className="flex justify-between items-center bg-[rgba(255,255,255,0.05)] p-3 rounded-lg">
+                              <div>
+                                <span className="text-[#ffb400] font-bold mr-3">{s.startTime} - {s.endTime}</span>
+                                <span className="font-medium text-white">{s.title}</span>
+                              </div>
+                              <div className="flex gap-2">
+                                <button onClick={() => setEditTvSchedule(s)} className="text-[rgba(255,255,255,0.6)] hover:text-[#9155fd]"><Settings className="w-4 h-4"/></button>
+                                <button onClick={() => { if(confirm('Silinsin mi?')) handleAction('deleteTvSchedule', { id: s.id }) }} className="text-[rgba(255,255,255,0.6)] hover:text-[#ff4c51]"><Trash className="w-4 h-4"/></button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {(!data.tvSchedules || data.tvSchedules.length === 0) && (
+                     <div className="text-[rgba(255,255,255,0.4)] text-sm">Haftalık plan henüz boş.</div>
+                  )}
                 </div>
               </div>
             </div>

@@ -410497,13 +410497,6 @@
     "date": "",
     "seriesIds": []
   },
-  "livePlaylists": [
-    {
-      "id": "624e8784-538c-4284-90fc-0adfaffd6425",
-      "name": "Tümü",
-      "url": "https://iptv-org.github.io/iptv/countries/tr.m3u"
-    }
-  ],
   "comments": [
     {
       "id": "0be2ed72-be55-40e5-9f28-9cafe9e6e7d3",
@@ -410516,5 +410509,9 @@
       "status": "approved",
       "createdAt": "2026-06-08T08:52:59.949Z"
     }
-  ]
+  ],
+  "bsplusTv": {
+    "streamUrl": "Didem Arslan İle Vazgeçme",
+    "currentProgram": "https://vmcdn.ciner.com.tr/ht/2026/06/09/359BB541B091A84168BDCAABE2445591.m3u8?e=1781102699&st=764aa19298f516a69c871662eedb3362"
+  }
 }

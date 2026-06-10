@@ -1,7 +1,9 @@
-import { readDB } from '@/lib/db';
+import { connectDB } from '@/lib/mongoose';
+import { Profile, Movie, Series } from '@/lib/models';
 import { verifyToken } from '@/lib/auth';
 import { cookies } from 'next/headers';
 import Link from 'next/link';
+import SmartImage from '@/components/SmartImage';
 
 export default async function FavoritesPage() {
   const cookieStore = await cookies();
@@ -13,15 +15,18 @@ export default async function FavoritesPage() {
   const payload = await verifyToken(token);
   if (!payload) return <div className="pt-24 px-8 text-white">Yetkisiz erişim.</div>;
 
-  const db = await readDB();
-  const profile = db.profiles.find(p => p.id === profileId && p.userId === payload.userId);
+  await connectDB();
+  const profile = JSON.parse(JSON.stringify(await Profile.findOne({ id: profileId, userId: payload.userId }).lean()));
   
   if (!profile) return <div className="pt-24 px-8 text-white">Profil bulunamadı.</div>;
 
   const favorites = profile.favorites || [];
 
-  const favoriteMovies = favorites.filter(f => f.type === 'movie').map(f => db.movies.find(m => m.id === f.id)).filter(Boolean);
-  const favoriteSeries = favorites.filter(f => f.type === 'series').map(f => db.series.find(s => s.id === f.id)).filter(Boolean);
+  const favoriteMovieIds = favorites.filter(f => f.type === 'movie').map(f => f.id);
+  const favoriteSeriesIds = favorites.filter(f => f.type === 'series').map(f => f.id);
+
+  const favoriteMovies = JSON.parse(JSON.stringify(await Movie.find({ id: { $in: favoriteMovieIds } }).lean()));
+  const favoriteSeries = JSON.parse(JSON.stringify(await Series.find({ id: { $in: favoriteSeriesIds } }).lean()));
 
   return (
     <div className="pt-24 px-8 min-h-screen bg-black text-white">
@@ -37,7 +42,7 @@ export default async function FavoritesPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {favoriteMovies.map((m: any) => (
               <Link key={m.id} href={`/watch/movie/${m.id}`} className="block relative group overflow-hidden rounded-md transition-transform hover:scale-105">
-                <img src={m.bannerUrl} alt={m.title} className="w-full h-auto object-cover aspect-[2/3]" />
+                <SmartImage src={m.bannerUrl} title={m.title} categories={m.categories} type="movie" className="w-full h-auto object-cover aspect-[2/3]" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-4">
                   <span className="font-bold">{m.title}</span>
                 </div>
@@ -53,7 +58,7 @@ export default async function FavoritesPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {favoriteSeries.map((s: any) => (
               <Link key={s.id} href={`/series/${s.id}`} className="block relative group overflow-hidden rounded-md transition-transform hover:scale-105">
-                <img src={s.bannerUrl} alt={s.title} className="w-full h-auto object-cover aspect-[2/3]" />
+                <SmartImage src={s.bannerUrl} title={s.title} categories={s.categories} type="series" className="w-full h-auto object-cover aspect-[2/3]" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-4">
                   <span className="font-bold">{s.title}</span>
                 </div>

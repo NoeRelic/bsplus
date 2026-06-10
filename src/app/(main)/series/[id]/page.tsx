@@ -1,15 +1,17 @@
-import { readDB } from '@/lib/db';
+import { connectDB } from '@/lib/mongoose';
+import { Series, User, Profile, Episode } from '@/lib/models';
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { verifyToken } from '@/lib/auth';
 import FavoriteButtonClient from '@/components/FavoriteButtonClient';
 import CommentsSectionClient from '@/components/CommentsSectionClient';
 import SeasonEpisodePicker from '@/components/SeasonEpisodePicker';
+import SmartImage from '@/components/SmartImage';
 
 export default async function SeriesDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const db = await readDB();
-  const series = db.series?.find((s: any) => s.id === id);
+  await connectDB();
+  const series = JSON.parse(JSON.stringify(await Series.findOne({ id }).lean()));
 
   const cookieStore = await cookies();
   const token = cookieStore.get('token')?.value;
@@ -20,10 +22,10 @@ export default async function SeriesDetailPage({ params }: { params: Promise<{ i
   if (token && profileId) {
     const payload = await verifyToken(token);
     if (payload) {
-      const user = db.users?.find((u: any) => u.id === payload.userId);
+      const user = JSON.parse(JSON.stringify(await User.findOne({ id: payload.userId }).lean()));
       if (user) userPackage = user.package;
 
-      const profile = db.profiles?.find((p: any) => p.id === profileId && p.userId === payload.userId);
+      const profile = JSON.parse(JSON.stringify(await Profile.findOne({ id: profileId, userId: payload.userId }).lean()));
       if (profile?.favorites?.some((f: any) => f.id === id)) {
         isFavorite = true;
       }
@@ -34,7 +36,7 @@ export default async function SeriesDetailPage({ params }: { params: Promise<{ i
     return <div className="px-16 pt-12 text-zinc-400">Dizi bulunamadı.</div>;
   }
 
-  const episodes: any[] = db.episodes?.filter((e: any) => e.seriesId === series.id) ?? [];
+  const episodes: any[] = JSON.parse(JSON.stringify(await Episode.find({ seriesId: series.id }).lean())) || [];
   const seasons = Array.from(new Set(episodes.map((e: any) => e.seasonNumber as number))).sort((a, b) => a - b);
 
   // Group episodes by season
@@ -54,10 +56,20 @@ export default async function SeriesDetailPage({ params }: { params: Promise<{ i
       <div className="relative w-full h-[55vh] bg-zinc-900">
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent z-10" />
         <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-transparent to-transparent z-10" />
-        {series.bannerUrl && (
-          <img
+        {series.bannerUrl ? (
+          <SmartImage
             src={series.bannerUrl}
-            alt={series.title}
+            title={series.title}
+            categories={series.categories}
+            type="series"
+            className="w-full h-full object-cover object-top"
+          />
+        ) : (
+          <SmartImage
+            src=""
+            title={series.title}
+            categories={series.categories}
+            type="series"
             className="w-full h-full object-cover object-top"
           />
         )}

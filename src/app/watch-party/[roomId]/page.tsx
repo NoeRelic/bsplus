@@ -1,12 +1,13 @@
 import WatchPartyClient from '@/components/WatchPartyClient';
-import { readDB } from '@/lib/db';
+import { connectDB } from '@/lib/mongoose';
+import { Profile, Movie, Episode } from '@/lib/models';
 import { cookies } from 'next/headers';
 import { verifyToken } from '@/lib/auth';
 
 export default async function WatchPartyPage({ params, searchParams }: { params: Promise<{ roomId: string }>, searchParams: Promise<{ mediaId: string, type: string }> }) {
   const { roomId } = await params;
   const { mediaId, type } = await searchParams;
-  const db = await readDB();
+  await connectDB();
 
   const cookieStore = await cookies();
   const token = cookieStore.get('token')?.value;
@@ -17,7 +18,7 @@ export default async function WatchPartyPage({ params, searchParams }: { params:
   if (token && profileId) {
     const payload = await verifyToken(token);
     if (payload) {
-      const profile = db.profiles?.find(p => p.id === profileId && p.userId === payload.userId);
+      const profile = await Profile.findOne({ id: profileId, userId: payload.userId }).lean();
       if (profile) username = profile.name;
     }
   }
@@ -29,7 +30,7 @@ export default async function WatchPartyPage({ params, searchParams }: { params:
   let title = '';
 
   if (type === 'movie') {
-    const movie = db.movies?.find(m => m.id === mediaId);
+    const movie = await Movie.findOne({ id: mediaId }).lean();
     if (!movie) return <div className="text-white text-center mt-20">Film bulunamadı.</div>;
     videoUrl = movie.videoUrl;
     videoUrlEN = movie.videoUrlEN || '';
@@ -37,7 +38,7 @@ export default async function WatchPartyPage({ params, searchParams }: { params:
     subtitleEN = movie.subtitleEN || '';
     title = movie.title;
   } else if (type === 'episode') {
-    const episode = db.episodes?.find(e => e.id === mediaId);
+    const episode = await Episode.findOne({ id: mediaId }).lean();
     if (!episode) return <div className="text-white text-center mt-20">Bölüm bulunamadı.</div>;
     videoUrl = episode.videoUrl;
     videoUrlEN = episode.videoUrlEN || '';

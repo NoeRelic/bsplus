@@ -1,8 +1,9 @@
-import { readDB } from '@/lib/db';
+import { connectDB } from '@/lib/mongoose';
+import { Movie } from '@/lib/models';
 import FilterableContentGrid from '@/components/FilterableContentGrid';
 export default async function MoviesPage() {
-  const db = await readDB();
-  const moviesList = db.movies || [];
+  await connectDB();
+  const moviesList = JSON.parse(JSON.stringify(await Movie.find().lean())) || [];
 
   return (
     <div className="px-8 md:px-16 pb-24">

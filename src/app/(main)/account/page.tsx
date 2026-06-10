@@ -8,7 +8,7 @@ export default function AccountPage() {
   const [loading, setLoading] = useState(true);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [twoFactor, setTwoFactor] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
@@ -19,7 +19,6 @@ export default function AccountPage() {
         if (data.user) {
           setUser(data.user);
           setUsername(data.user.username);
-          setTwoFactor(data.user.twoFactorEnabled);
         }
         setLoading(false);
       });
@@ -30,7 +29,12 @@ export default function AccountPage() {
     setMessage('');
     setError('');
 
-    const payload: any = { username, twoFactorEnabled: twoFactor };
+    if (!currentPassword) {
+      setError('Lütfen değişiklikleri onaylamak için mevcut şifrenizi girin.');
+      return;
+    }
+
+    const payload: any = { username, currentPassword };
     if (password) {
       payload.password = password;
     }
@@ -45,6 +49,7 @@ export default function AccountPage() {
     if (data.success) {
       setMessage('Hesap bilgileriniz başarıyla güncellendi.');
       setPassword('');
+      setCurrentPassword('');
     } else {
       setError(data.error || 'Bir hata oluştu.');
     }
@@ -89,15 +94,17 @@ export default function AccountPage() {
               />
             </div>
 
-            <div className="flex items-center gap-3 mt-2">
+            <div className="pt-4 border-t border-zinc-800 mt-2">
+              <label className="block text-zinc-400 mb-2 font-bold">Mevcut Şifreniz <span className="text-red-500">*</span></label>
+              <p className="text-xs text-zinc-500 mb-2">Değişiklikleri kaydetmek için mevcut şifrenizi girmelisiniz.</p>
               <input 
-                type="checkbox" 
-                id="2fa" 
-                checked={twoFactor}
-                onChange={e => setTwoFactor(e.target.checked)}
-                className="w-5 h-5 accent-blue-500"
+                type="password" 
+                value={currentPassword}
+                onChange={e => setCurrentPassword(e.target.value)}
+                className="w-full bg-zinc-800 border border-zinc-700 text-white p-3 rounded-md focus:outline-none focus:border-red-500/50"
+                placeholder="••••••••"
+                required
               />
-              <label htmlFor="2fa" className="font-bold cursor-pointer">2 Aşamalı Doğrulama (2FA) Aktif</label>
             </div>
 
             <button type="submit" className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-md mt-4 transition-colors">

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
-import { readDB } from '@/lib/db';
+import { connectDB } from '@/lib/mongoose';
+import { User } from '@/lib/models';
 import { signToken } from '@/lib/auth';
 
 export async function POST(req: Request) {
@@ -10,8 +11,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Eksik bilgi' }, { status: 400 });
     }
 
-    const db = await readDB();
-    const user = db.users.find(u => u.username === username);
+    await connectDB();
+    const user = await User.findOne({ username }).lean();
     
     if (!user) {
       return NextResponse.json({ error: 'Geçersiz kullanıcı adı veya şifre' }, { status: 401 });
@@ -19,6 +20,18 @@ export async function POST(req: Request) {
 
     if (user.isBanned) {
       return NextResponse.json({ error: 'Hesabınız platformdan yasaklanmıştır.' }, { status: 403 });
+    }
+
+    if (user.isTrial && user.trialExpiresAt) {
+      const expiresAt = new Date(user.trialExpiresAt);
+      if (expiresAt < new Date()) {
+        // Trial expired. Delete user account and profiles.
+        await User.deleteOne({ id: user.id });
+        const { Profile, ActiveSession } = require('@/lib/models');
+        await Profile?.deleteMany({ userId: user.id });
+        await ActiveSession?.deleteMany({ userId: user.id });
+        return NextResponse.json({ error: 'Ücretsiz deneme süreniz dolmuştur, hesabınız silindi.' }, { status: 403 });
+      }
     }
 
     const isMatch = await bcrypt.compare(password, user.passwordHash);
