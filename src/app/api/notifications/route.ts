@@ -23,7 +23,7 @@ export async function GET() {
     const allNotifications = await Notification.find().lean();
     const userPackage = user.package;
 
-    const visibleNotifications = allNotifications.filter(n => {
+    const visibleNotifications = allNotifications.filter((n: any) => {
       return !n.targetPackage || n.targetPackage === 'All' || n.targetPackage === userPackage;
     });
 
@@ -69,7 +69,7 @@ export async function POST(req: Request) {
     if (action === 'markAllRead') {
       const allNotifications = await Notification.find().lean();
       const user = await User.findOne({ id: payload.userId }).lean();
-      const visibleIds = allNotifications.filter(n => !n.targetPackage || n.targetPackage === 'All' || n.targetPackage === user?.package).map(n => n.id);
+      const visibleIds = allNotifications.filter((n: any) => !n.targetPackage || n.targetPackage === 'All' || n.targetPackage === user?.package).map((n: any) => n.id);
       
       profile.readNotifications = Array.from(new Set([...(profile.readNotifications || []), ...visibleIds]));
       await profile.save();

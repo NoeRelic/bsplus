@@ -160,7 +160,7 @@ export default function AdminPanel() {
     if (!m3uText.trim()) return alert('Lütfen M3U içeriğini yapıştırın.');
     setM3uLoading(true);
     
-    const lines = m3uText.split('\n').map(l => l.trim()).filter(Boolean);
+    const lines = m3uText.split('\n').map((l: any) => l.trim()).filter(Boolean);
     const items = [];
     
     let currentItem: any = {};
@@ -261,7 +261,7 @@ export default function AdminPanel() {
         
         <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto scrollbar-hide">
           <div className="text-xs font-semibold text-[rgba(255,255,255,0.38)] uppercase tracking-wider mb-4 ml-4">Yönetim Paneli</div>
-          {NAV_ITEMS.map(item => (
+          {NAV_ITEMS.map((item: any) => (
             <button 
               key={item.id} 
               onClick={() => { setTab(item.id); setSidebarOpen(false); }} 
@@ -458,7 +458,7 @@ export default function AdminPanel() {
                   <div className="md:col-span-2 flex gap-4">
                     <input id="movieBannerUrl" name="bannerUrl" defaultValue={editMovie?.bannerUrl} placeholder="Kapak Resmi URL" required className="flex-1 bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] text-white px-4 py-3 rounded-lg outline-none focus:border-[#9155fd]" />
                     <button type="button" onClick={async (e) => {
-                      const title = (e.currentTarget.form as HTMLFormElement).title.value;
+                      const title = (e.currentTarget.form as any).title.value;
                       if (!title) return alert('Lütfen önce Film İsmi girin.');
                       const btn = e.currentTarget;
                       const origText = btn.textContent;
@@ -743,7 +743,7 @@ export default function AdminPanel() {
                   <div className="flex gap-4 w-full">
                     <input id="seriesBannerUrl" name="bannerUrl" defaultValue={editSeries?.bannerUrl} placeholder="Kapak Resmi URL" required className="flex-1 bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.12)] text-white px-4 py-3 rounded-lg outline-none focus:border-[#9155fd]" />
                     <button type="button" onClick={async (e) => {
-                      const title = (e.currentTarget.form as HTMLFormElement).title.value;
+                      const title = (e.currentTarget.form as any).title.value;
                       if (!title) return alert('Lütfen önce Dizi İsmi girin.');
                       const btn = e.currentTarget;
                       const origText = btn.textContent;

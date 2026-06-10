@@ -17,7 +17,7 @@ export default async function HomePage() {
   const heroItems = [
     ...(movies.slice(0, 3).map((m: any) => ({ ...m, type: 'movie' }))),
     ...(series.slice(0, 2).map((s: any) => ({ ...s, type: 'series' })))
-  ].filter(i => i.bannerUrl);
+  ].filter((i: any) => i.bannerUrl);
 
   const cookieStore = await cookies();
   const token = cookieStore.get('token')?.value;
@@ -81,7 +81,7 @@ export default async function HomePage() {
     }
   }
 
-  const topSeriesIds = series.map(s => s.id);
+  const topSeriesIds = series.map((s: any) => s.id);
   const seriesEpisodes = JSON.parse(JSON.stringify(await Episode.find({ seriesId: { $in: topSeriesIds } }).lean()));
 
   return (
@@ -99,7 +99,7 @@ export default async function HomePage() {
               Kaldığın Yerden Devam Et
             </h2>
             <div className="flex gap-4 md:gap-6 overflow-x-auto pb-6 pt-2 px-2 -mx-2 scrollbar-hide">
-              {continueWatching.map(item => (
+              {continueWatching.map((item: any) => (
                 <Link key={item.videoId} href={item.link} className="min-w-[260px] md:min-w-[320px] aspect-video relative group overflow-hidden rounded-2xl cursor-pointer hover-neon-glow glass">
                   <SmartImage src={item.bannerUrl} title={item.title} categories={item.categories} type={item.type} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 opacity-90 group-hover:opacity-100" />
                   <div className="absolute inset-0 bg-gradient-to-t from-[#06060a]/95 via-[#06060a]/20 to-transparent transition-opacity duration-500" />
@@ -129,7 +129,7 @@ export default async function HomePage() {
             <p className="text-zinc-500">Henüz film eklenmemiş.</p>
           ) : (
             <div className="flex gap-4 md:gap-6 overflow-x-auto pb-6 pt-2 px-2 -mx-2 scrollbar-hide">
-              {movies.map(movie => {
+              {movies.map((movie: any) => {
                 const hasDoubleSub = !!(movie.subtitleTR && movie.subtitleEN);
                 return (
                   <Link key={movie.id} href={`/watch/movie/${movie.id}`} className="min-w-[200px] md:min-w-[280px] aspect-video relative group overflow-hidden rounded-2xl cursor-pointer hover-neon-glow glass">
@@ -158,7 +158,7 @@ export default async function HomePage() {
             <p className="text-zinc-500">Henüz dizi eklenmemiş.</p>
           ) : (
             <div className="flex gap-4 md:gap-6 overflow-x-auto pb-6 pt-2 px-2 -mx-2 scrollbar-hide">
-              {series.map(s => {
+              {series.map((s: any) => {
                 const sEps = seriesEpisodes.filter((e: any) => e.seriesId === s.id);
                 const hasDoubleSub = sEps.some((e: any) => e.subtitleTR && e.subtitleEN);
                 return (

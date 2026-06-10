@@ -22,7 +22,7 @@ export async function GET(req: Request) {
     todaySchedules.sort((a, b) => a.startTime.localeCompare(b.startTime));
 
     // Find the currently active schedule
-    const activeSchedule = todaySchedules.find(s => {
+    const activeSchedule = todaySchedules.find((s: any) => {
       return currentTimeStr >= s.startTime && currentTimeStr < s.endTime;
     });
 

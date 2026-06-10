@@ -33,7 +33,7 @@ export async function GET(request: Request) {
     const basePath = targetUrl.substring(0, targetUrl.lastIndexOf('/') + 1);
 
     const lines = m3u8Text.split('\n');
-    const rewrittenLines = lines.map(line => {
+    const rewrittenLines = lines.map((line: any) => {
       let trimmed = line.trim();
       if (!trimmed) return '';
       

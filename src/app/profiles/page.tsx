@@ -217,7 +217,7 @@ export default function ProfilesPage() {
       )}
       <h1 className="text-white text-3xl md:text-5xl font-bold mb-12">Kim İzliyor?</h1>
       <div className="flex flex-wrap justify-center gap-8">
-        {profiles.map(profile => (
+        {profiles.map((profile: any) => (
           <button
             key={profile.id}
             onClick={() => handleProfileSelect(profile)}

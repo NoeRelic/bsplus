@@ -35,14 +35,14 @@ export default async function SeriesPage() {
     if (config.dailyGoldSeries?.date === today) {
       dailyIds = config.dailyGoldSeries.seriesIds;
     } else {
-      const allSeriesIds = seriesList.map(s => s.id);
+      const allSeriesIds = seriesList.map((s: any) => s.id);
       const shuffled = [...allSeriesIds].sort(() => 0.5 - Math.random());
       dailyIds = shuffled.slice(0, 15);
       config.dailyGoldSeries = { date: today, seriesIds: dailyIds };
       await config.save();
     }
     
-    seriesList = seriesList.filter(s => dailyIds.includes(s.id));
+    seriesList = seriesList.filter((s: any) => dailyIds.includes(s.id));
   }
 
   return (

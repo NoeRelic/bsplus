@@ -84,7 +84,7 @@ export default async function WatchPage({ params }: { params: Promise<{ type: st
 
     // Similar movies
     const simMovies = await Movie.find({ type: movie.type, id: { $ne: id } }).limit(4).lean();
-    similarItems = simMovies.map(m => ({ ...m, _id: undefined, mediaType: 'movie' }));
+    similarItems = simMovies.map((m: any) => ({ ...m, _id: undefined, mediaType: 'movie' }));
   } else if (type === 'episode') {
     const episode = await Episode.findOne({ id }).lean();
     if (!episode) return <div className="text-white text-center mt-20">Bölüm bulunamadı.</div>;

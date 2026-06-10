@@ -34,8 +34,8 @@ export default async function CatchUpPage() {
     );
   }
 
-  const movieIds = sortedProgress.filter(p => p.type === 'movie').map(p => p.videoId);
-  const episodeIds = sortedProgress.filter(p => p.type === 'episode').map(p => p.videoId);
+  const movieIds = sortedProgress.filter((p: any) => p.type === 'movie').map((p: any) => p.videoId);
+  const episodeIds = sortedProgress.filter((p: any) => p.type === 'episode').map((p: any) => p.videoId);
   
   const movies = JSON.parse(JSON.stringify(await Movie.find({ id: { $in: movieIds } }).lean()));
   const episodes = JSON.parse(JSON.stringify(await Episode.find({ id: { $in: episodeIds } }).lean()));
