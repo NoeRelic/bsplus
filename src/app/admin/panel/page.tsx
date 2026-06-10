@@ -106,19 +106,23 @@ export default function AdminPanel() {
   };
 
   const handleAction = async (action: string, payload: any, refresh: boolean = true) => {
-    const res = await fetch('/api/admin', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, payload })
-    });
-    const result = await res.json();
-    if (result.success) {
-      if (result.user) {
-        alert(`Kullanıcı oluşturuldu!\nUsername: ${result.user.username}\nPassword: ${result.user.password}`);
+    try {
+      const res = await fetch('/api/admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, payload })
+      });
+      const result = await res.json();
+      if (result.success) {
+        if (result.user) {
+          alert(`Kullanıcı oluşturuldu!\nUsername: ${result.user.username}\nPassword: ${result.user.password}`);
+        }
+        if (refresh) fetchData();
+      } else {
+        alert('Hata: ' + result.error);
       }
-      if (refresh) fetchData();
-    } else {
-      alert('Hata: ' + result.error);
+    } catch (err: any) {
+      alert('İşlem sırasında bir hata oluştu: ' + err.message);
     }
   };
 
@@ -345,7 +349,11 @@ export default function AdminPanel() {
                     <option value="Diamond">Diamond Paket</option>
                   </select>
                   <button 
-                    onClick={() => handleAction('createUser', { package: (document.getElementById('newPackage') as HTMLSelectElement).value })}
+                    onClick={() => {
+                      const selectEl = document.getElementById('newPackage') as HTMLSelectElement;
+                      const pkg = selectEl ? selectEl.value : 'Iron';
+                      handleAction('createUser', { package: pkg });
+                    }}
                     className="bg-[#9155fd] text-white px-6 py-2 rounded-lg font-medium hover:bg-[#804bdf] transition-colors shadow-lg shadow-[#9155fd]/30 flex items-center gap-2"
                   >
                     <Plus className="w-4 h-4" /> Yeni Üret
