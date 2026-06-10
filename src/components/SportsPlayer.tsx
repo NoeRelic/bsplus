@@ -82,7 +82,7 @@ export default function SportsPlayer({ channel }: SportsPlayerProps) {
                 hls.recoverMediaError();
                 mediaErrorCount++;
               } else {
-                if (eventData.details === 'EXPIRED') {
+                if (String(eventData.details) === 'EXPIRED') {
                   setError('Yayın süresi dolmuştur.');
                 } else {
                   setError('Medya hatası: Video oynatılamıyor.');

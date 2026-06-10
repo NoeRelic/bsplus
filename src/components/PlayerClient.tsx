@@ -4,7 +4,6 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, Settings, Subtitles, Check, MessageSquare, X } from 'lucide-react';
 import Hls from 'hls.js';
-import ReactHlsPlayer from 'react-hls-player';
 import SmartImage from './SmartImage';
 import CommentsSectionClient from '@/components/CommentsSectionClient';
 
