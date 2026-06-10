@@ -40,7 +40,7 @@ export default async function CatchUpPage() {
   const movies = JSON.parse(JSON.stringify(await Movie.find({ id: { $in: movieIds } }).lean()));
   const episodes = JSON.parse(JSON.stringify(await Episode.find({ id: { $in: episodeIds } }).lean()));
   
-  const seriesIds = episodes.map(e => e.seriesId);
+  const seriesIds = episodes.map((e: any) => e.seriesId);
   const series = JSON.parse(JSON.stringify(await Series.find({ id: { $in: seriesIds } }).lean()));
 
   return (
@@ -53,10 +53,10 @@ export default async function CatchUpPage() {
           let link = '';
           
           if (p.type === 'movie') {
-            item = movies.find(m => m.id === p.videoId);
+            item = movies.find((m: any) => m.id === p.videoId);
             link = `/watch/movie/${p.videoId}`;
           } else {
-            item = episodes.find(e => e.id === p.videoId);
+            item = episodes.find((e: any) => e.id === p.videoId);
             link = `/watch/episode/${p.videoId}`;
           }
 
@@ -67,7 +67,7 @@ export default async function CatchUpPage() {
           let title = item.title;
           
           if (p.type === 'episode') {
-            const seriesObj = series.find(s => s.id === item.seriesId);
+            const seriesObj = series.find((s: any) => s.id === item.seriesId);
             bannerUrl = seriesObj?.bannerUrl || '';
             title = `${seriesObj?.title} - S${item.seasonNumber}E${item.episodeNumber}`;
           }

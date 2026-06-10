@@ -22,8 +22,8 @@ export default async function FavoritesPage() {
 
   const favorites = profile.favorites || [];
 
-  const favoriteMovieIds = favorites.filter(f => f.type === 'movie').map(f => f.id);
-  const favoriteSeriesIds = favorites.filter(f => f.type === 'series').map(f => f.id);
+  const favoriteMovieIds = favorites.filter((f: any) => f.type === 'movie').map((f: any) => f.id);
+  const favoriteSeriesIds = favorites.filter((f: any) => f.type === 'series').map((f: any) => f.id);
 
   const favoriteMovies = JSON.parse(JSON.stringify(await Movie.find({ id: { $in: favoriteMovieIds } }).lean()));
   const favoriteSeries = JSON.parse(JSON.stringify(await Series.find({ id: { $in: favoriteSeriesIds } }).lean()));

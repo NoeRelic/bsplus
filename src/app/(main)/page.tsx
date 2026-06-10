@@ -32,23 +32,23 @@ export default async function HomePage() {
       if (profile && profile.progress && profile.progress.length > 0) {
         const sortedProgress = [...profile.progress].sort((a, b) => new Date(b.lastWatched).getTime() - new Date(a.lastWatched).getTime());
         
-        const movieIds = sortedProgress.filter(p => p.type === 'movie').map(p => p.videoId);
-        const episodeIds = sortedProgress.filter(p => p.type === 'episode').map(p => p.videoId);
+        const movieIds = sortedProgress.filter((p: any) => p.type === 'movie').map((p: any) => p.videoId);
+        const episodeIds = sortedProgress.filter((p: any) => p.type === 'episode').map((p: any) => p.videoId);
         
         const allMovies = JSON.parse(JSON.stringify(await Movie.find({ id: { $in: movieIds } }).lean()));
         const allEpisodes = JSON.parse(JSON.stringify(await Episode.find({ id: { $in: episodeIds } }).lean()));
         
-        const cSeriesIds = allEpisodes.map(e => e.seriesId);
+        const cSeriesIds = allEpisodes.map((e: any) => e.seriesId);
         const allSeries = JSON.parse(JSON.stringify(await Series.find({ id: { $in: cSeriesIds } }).lean()));
 
-        continueWatching = sortedProgress.map(p => {
+        continueWatching = sortedProgress.map((p: any) => {
           let media: any;
           let title = '';
           let bannerUrl = '';
           let link = '';
           let categories: string[] = [];
           if (p.type === 'movie') {
-            media = allMovies.find(m => m.id === p.videoId);
+            media = allMovies.find((m: any) => m.id === p.videoId);
             if (media) {
               title = media.title;
               bannerUrl = media.bannerUrl || '';
@@ -56,9 +56,9 @@ export default async function HomePage() {
               link = `/watch/movie/${media.id}?t=${Math.floor(p.time)}`;
             }
           } else {
-            media = allEpisodes.find(e => e.id === p.videoId);
+            media = allEpisodes.find((e: any) => e.id === p.videoId);
             if (media) {
-              const seriesObj = allSeries.find(s => s.id === media.seriesId);
+              const seriesObj = allSeries.find((s: any) => s.id === media.seriesId);
               title = seriesObj ? `${seriesObj.title} - S${media.seasonNumber}E${media.episodeNumber}` : media.title;
               bannerUrl = seriesObj?.bannerUrl || ''; 
               categories = seriesObj?.categories || [];
