@@ -1,36 +1,36 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🎬 BS Plus - Media & Netflix Alternative Platform
 
-## Getting Started
+**BS Plus**, modern web arayüzü ve dahili Yönetim (Admin) Paneli sunan, JSON veritabanı altyapısıyla çalışan hafif ve hızlı bir medya platformudur.
 
-First, run the development server:
+---
 
+## 🚀 Öne Çıkan Özellikler
+
+- **🍿 Netflix Stil Arayüz:** Film ve dizileri kategori ve türlerine göre listeleyen koyu tema destekli modern tasarım.
+- **🛠 Gelişmiş Admin Paneli:** Yeni içerik ekleme, mevcut içerikleri düzenleme ve silme işlemlerini gerçekleştiren panel altyapısı.
+- **📁 JSON Tabanlı Veritabanı:** Ekstra bir SQL/NoSQL sunucusu kurmaya gerek kalmadan tüm verileri JSON üzerinde saklama ve yönetme imkanı.
+- **⚡ Kolay ve Hızlı Kurulum:** Sadece bağımlılıkları yükleyip tek komutla başlatma kolaylığı.
+
+---
+
+## 🛠 Kullanılan Teknolojiler
+
+- **Backend & Server:** Node.js, Express.js (veya varsayılan server altyapınız)
+- **Frontend:** HTML5, CSS3, JavaScript (ES6+)
+- **Veritabanı:** JSON File System / DB
+- **Paket Yöneticisi:** npm
+
+---
+
+## 📦 Kurulum ve Çalıştırma
+
+Projeyi bilgisayarınızda yerel olarak çalıştırmak için aşağıdaki adımları uygulayın:
+
+### Ön Gereksinimler
+- [Node.js](https://nodejs.org/) (v14 veya üzeri)
+- [npm](https://www.npmjs.com/) (Node.js ile otomatik yüklenir)
+
+### 1. Depoyu Klonlayın
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+git clone [https://github.com/NoeRelic/bsplus.git](https://github.com/NoeRelic/bsplus.git)
+cd bsplus
